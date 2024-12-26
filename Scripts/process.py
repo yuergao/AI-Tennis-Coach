@@ -8,6 +8,174 @@ import shutil
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose()
 
+# Function to extract keypoints and detect the start of the swing
+def detect_swing_start(keypoints, threshold=0.5):
+    """
+    Detects the start of the swing based on the movement of the wrist (right wrist as an example).
+    
+    :param keypoints: List of keypoints for a frame.
+    :param threshold: The movement threshold that signifies the start of the swing.
+    :return: True if swing start is detected, False otherwise.
+    """
+    if keypoints is None or len(keypoints) <= 28:
+        return False
+    
+    # Assuming right wrist is at index 28
+    wrist_x, wrist_y = keypoints[28]  # Right wrist keypoint
+
+    if wrist_x is not None and wrist_y is not None:
+        # Check for a significant movement in the wrist (you can adjust this based on what you consider a "swing start")
+        if wrist_y > threshold:  # You can use any condition that identifies the swing start
+            return True
+    return False
+
+# Function to calculate arm orientation (straightness) for the right arm
+def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_index=12, left_elbow_index=13, right_elbow_index=14, right_wrist_index=16, start_frame=10):
+    orientations = []
+    for i in range(start_frame, len(keypoints)):
+        if keypoints[i] is not None:
+            try:
+                # Right arm orientation (shoulder, elbow, wrist)
+                rs_x, rs_y = keypoints[i][right_shoulder_index]
+                re_x, re_y = keypoints[i][right_elbow_index]
+                rw_x, rw_y = keypoints[i][right_wrist_index]
+
+                # Calculate angle between shoulder, elbow, and wrist to check straightness (cosine law approach)
+                # Vector from shoulder to elbow
+                arm_vec_x = re_x - rs_x
+                arm_vec_y = re_y - rs_y
+                # Vector from elbow to wrist
+                forearm_vec_x = rw_x - re_x
+                forearm_vec_y = rw_y - re_y
+                # Dot product to check alignment
+                dot_product = arm_vec_x * forearm_vec_x + arm_vec_y * forearm_vec_y
+                arm_magnitude = np.sqrt(arm_vec_x**2 + arm_vec_y**2)
+                forearm_magnitude = np.sqrt(forearm_vec_x**2 + forearm_vec_y**2)
+
+                # Cosine of the angle between vectors (ideal is 1 if perfectly straight)
+                cos_angle = dot_product / (arm_magnitude * forearm_magnitude)
+                straightness = 1 - abs(cos_angle)  # Closer to 0 means more straight
+
+                # Add the straightness and wrist's x position to check its horizontal alignment
+                orientations.append((straightness, rw_x))
+            except:
+                orientations.append((1, 0))  # Default values in case of error
+        else:
+            orientations.append((1, 0))  # Default values in case of missing keypoints
+    return orientations
+
+# Function to find the 5-frame segment with the lowest average straightness (most extended arm)
+def find_most_aligned_segment(arm_orientations, segment_length=5):
+    min_avg_straightness = float('inf')
+    best_segment_start = None
+
+    # Slide through the arm orientations and calculate the average straightness for each segment
+    for i in range(len(arm_orientations) - segment_length + 1):
+        segment = arm_orientations[i:i + segment_length]
+        avg_straightness = np.mean([s[0] for s in segment])  # Average straightness of the segment
+
+        if avg_straightness < min_avg_straightness:
+            min_avg_straightness = avg_straightness
+            best_segment_start = i
+
+    return best_segment_start
+
+def sync_video_timings(video1_path, video2_path, output_path):
+    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
+    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+
+    # Find the first valid frame for both players
+    first_valid_frame_idx = None
+    for idx in range(5, len(keypoints1)):
+        if keypoints1[idx] is not None and keypoints2[idx] is not None:
+            first_valid_frame_idx = idx
+            break
+
+    if first_valid_frame_idx is None:
+        print("Error: Could not find a valid frame with keypoints for both players.")
+        return
+
+    # Calculate arm orientations for both players
+    arm_orientation1 = calculate_arm_orientation(keypoints1, start_frame=5)
+    arm_orientation2 = calculate_arm_orientation(keypoints2, start_frame=5)
+
+    # Find the most aligned 5-frame segment with the lowest average straightness
+    aligned_segment1_start = find_most_aligned_segment(arm_orientation1)
+    aligned_segment2_start = find_most_aligned_segment(arm_orientation2)
+
+    if aligned_segment1_start is None or aligned_segment2_start is None:
+        print("Error: Could not find valid aligned segments with arm straightness.")
+        return
+
+    # Calculate the time offset based on the aligned segments
+    time_offset = aligned_segment2_start - aligned_segment1_start
+
+    # Debugging: Print the start and end frames for both videos
+    print(f"Video 1 start segment: {aligned_segment1_start + 5}, stop segment: {aligned_segment1_start + 5 + 5}")
+    print(f"Video 2 start segment: {aligned_segment2_start + 5}, stop segment: {aligned_segment2_start + 5 + 5}")
+    print(f"Time offset between Video 1 and Video 2: {time_offset} frames")
+
+    # Open videos for reading
+    cap1 = cv2.VideoCapture(video1_path)
+    cap2 = cv2.VideoCapture(video2_path)
+
+    if not cap1.isOpened() or not cap2.isOpened():
+        print("Error: Could not open video files.")
+        return
+
+    # Video properties
+    fps = int(cap1.get(cv2.CAP_PROP_FPS))
+    width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+
+    # Initialize scale ratio based on the first valid frame
+    scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]
+
+    # Set the frame indices for both videos
+    frame_idx1 = first_valid_frame_idx - time_offset  # Adjust frame index for video 1
+    frame_idx2 = first_valid_frame_idx   # Adjust frame index for video 2
+
+    # Loop through frames for both videos until one of them runs out
+    while True:
+        ret1, frame1 = cap1.read()
+        ret2, frame2 = cap2.read()
+
+        if not ret1 or not ret2:
+            break
+
+        # Stop when one video ends (based on the shorter video)
+        if frame_idx1 > len(keypoints1) or frame_idx2 > len(keypoints2):
+            break
+
+        # Check frame indices for valid keypoints
+        if frame_idx1 < len(keypoints1) and frame_idx2 < len(keypoints2):
+            if keypoints1[frame_idx1] and keypoints2[frame_idx2]:
+                # Create a blank frame for the overlay
+                blank_frame = np.zeros_like(frame1)
+
+                # Align keypoints
+                fixed_scale1 = scales1[frame_idx1]
+                adjusted_scale2 = scales2[frame_idx2] * scale_ratio
+                aligned_kp1 = align_keypoints(keypoints1[frame_idx1], fixed_scale1, fixed_scale1, target_center=(0.5, 0.5))
+                aligned_kp2 = align_keypoints(keypoints2[frame_idx2], scales2[frame_idx2], adjusted_scale2, target_center=(0.5, 0.5))
+
+                # Draw the overlay on the blank frame
+                blank_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
+
+                # Write the frame to the output video
+                out.write(blank_frame)
+
+        # Increment frame indices for both videos
+        frame_idx1 += 1
+        frame_idx2 += 1
+
+    cap1.release()
+    cap2.release()
+    out.release()
+    print(f"Synchronized video saved to {output_path}")
+    
 # Function to overlay keypoints onto a blank frame
 def draw_overlay(frame, keypoints1, keypoints2, color1=(0, 255, 0), color2=(0, 0, 255)):
     """
@@ -486,7 +654,9 @@ my_swing_features = extract_swing_features(my_swing_keypoints)
 pro_swing_features = extract_swing_features(pro_swing_keypoints)
 '''
 
-output_video = 'compare/overlay_output.mp4'
+output_video = 'compare/overlay_output1.mp4'
 
-create_aligned_overlay_video(video1, video2, output_video)
+#create_aligned_overlay_video(video1, video2, output_video)
 
+# Call the function to sync the timing and overlay the videos
+sync_video_timings(video1, video2, output_video)
