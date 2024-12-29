@@ -79,8 +79,57 @@ def find_most_aligned_segment(arm_orientations, segment_length=5):
             best_segment_start = i
 
     return best_segment_start
+    
+    
+def sync_video_timings(video1_path, video2_path, output_path, top_bottom_original_path):
+    def resize_and_pad(frame, target_width, target_height):
+        """
+        Pad a frame to fit a 16:9 aspect ratio without cropping.
+        
+        Parameters:
+            frame (numpy.ndarray): Input frame.
+            target_width (int): Target width for the output frame.
+            target_height (int): Target height for the output frame.
+        
+        Returns:
+            numpy.ndarray: Padded frame with a 16:9 aspect ratio.
+        """
+        original_height, original_width = frame.shape[:2]
+        original_aspect_ratio = original_width / original_height
 
-def sync_video_timings(video1_path, video2_path, output_path):
+        # Determine orientation and set target dimensions
+        if original_height > original_width:  # Vertical video
+            target_width = 720
+            target_height = 1280  # 9:16 aspect ratio
+        else:  # Horizontal video
+            target_width = 1920
+            target_height = 1080  # 16:9 aspect ratio
+
+        target_aspect_ratio = target_width / target_height
+
+        # Calculate new dimensions while preserving aspect ratio
+        if original_aspect_ratio > target_aspect_ratio:
+            # Wider than target aspect ratio, pad height
+            new_width = target_width
+            new_height = int(target_width / original_aspect_ratio)
+        else:
+            # Taller than target aspect ratio, pad width
+            new_height = target_height
+            new_width = int(target_height * original_aspect_ratio)
+
+        # Resize the frame to fit within the target dimensions
+        resized_frame = cv2.resize(frame, (new_width, new_height))
+
+        # Create a black canvas with the target dimensions
+        padded_frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+
+        # Center the resized frame on the canvas
+        x_offset = (target_width - new_width) // 2
+        y_offset = (target_height - new_height) // 2
+        padded_frame[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_frame
+
+        return padded_frame
+            
     keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
     keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
 
@@ -107,6 +156,7 @@ def sync_video_timings(video1_path, video2_path, output_path):
         print("Error: Could not find valid aligned segments with arm straightness.")
         return
 
+
     # Calculate the time offset based on the aligned segments
     time_offset = aligned_segment2_start - aligned_segment1_start
 
@@ -125,11 +175,30 @@ def sync_video_timings(video1_path, video2_path, output_path):
 
     # Video properties
     fps = int(cap1.get(cv2.CAP_PROP_FPS))
-    width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    original_width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
+    original_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
-
+    # Determine orientation and set target dimensions
+    if original_height > original_width:  # Vertical video
+        target_width = 720
+        target_height = 1280  # 9:16 aspect ratio
+        
+        output_video_width = target_width * 2
+        output_video_height = target_height
+        
+    else:  # Horizontal video
+        target_width = 1920
+        target_height = 1080  # 16:9 aspect ratio
+        
+        output_video_width = target_width 
+        output_video_height = target_height * 2
+        
+    # Video writers
+    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (target_width, target_height))   
+    out3 = cv2.VideoWriter(
+        top_bottom_original_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (output_video_width, output_video_height)
+    )
+    
     # Initialize scale ratio based on the first valid frame
     scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]
 
@@ -137,6 +206,13 @@ def sync_video_timings(video1_path, video2_path, output_path):
     frame_idx1 = first_valid_frame_idx - time_offset  # Adjust frame index for video 1
     frame_idx2 = first_valid_frame_idx   # Adjust frame index for video 2
 
+    # Sync the starting points of the videos
+    if time_offset > 0:
+        for _ in range(time_offset):
+            cap2.read()  # Skip frames in video2
+    elif time_offset < 0:
+        for _ in range(-time_offset):
+            cap1.read()  # Skip frames in video1
     # Loop through frames for both videos until one of them runs out
     while True:
         ret1, frame1 = cap1.read()
@@ -144,7 +220,7 @@ def sync_video_timings(video1_path, video2_path, output_path):
 
         if not ret1 or not ret2:
             break
-
+        
         # Stop when one video ends (based on the shorter video)
         if frame_idx1 > len(keypoints1) or frame_idx2 > len(keypoints2):
             break
@@ -152,8 +228,6 @@ def sync_video_timings(video1_path, video2_path, output_path):
         # Check frame indices for valid keypoints
         if frame_idx1 < len(keypoints1) and frame_idx2 < len(keypoints2):
             if keypoints1[frame_idx1] and keypoints2[frame_idx2]:
-                # Create a blank frame for the overlay
-                blank_frame = np.zeros_like(frame1)
 
                 # Align keypoints
                 fixed_scale1 = scales1[frame_idx1]
@@ -162,19 +236,39 @@ def sync_video_timings(video1_path, video2_path, output_path):
                 aligned_kp2 = align_keypoints(keypoints2[frame_idx2], scales2[frame_idx2], adjusted_scale2, target_center=(0.5, 0.5))
 
                 # Draw the overlay on the blank frame
-                blank_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
+                blank_frame = np.zeros_like(frame1)
+                overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
 
+            
+                overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
+                padded_frame1 = resize_and_pad(frame1, target_width, target_height)
+                padded_frame2 = resize_and_pad(frame2, target_width, target_height)
+                
+                if original_height > original_width:
+                    # Side by side verticle videos
+                    combined_frame = np.hstack([padded_frame1, padded_frame2])
+
+                else:
+                    combined_frame = np.vstack([padded_frame1, padded_frame2])  # Top Down horizontal videos
+                
                 # Write the frame to the output video
-                out.write(blank_frame)
+                out.write(overlay_frame)
+                #out2.write(top_bottom_annot_frame)
+                out3.write(combined_frame)
 
         # Increment frame indices for both videos
         frame_idx1 += 1
-        frame_idx2 += 1
+        frame_idx2 += 1     
+        
 
+    # Release resources
     cap1.release()
     cap2.release()
     out.release()
-    print(f"Synchronized video saved to {output_path}")
+    out3.release()
+
+    print(f"Synchronized overlay video saved to {output_path}")
+    print(f"Top-bottom original video saved to {top_bottom_original_path}")
     
 # Function to overlay keypoints onto a blank frame
 def draw_overlay(frame, keypoints1, keypoints2, color1=(0, 255, 0), color2=(0, 0, 255)):
@@ -261,8 +355,8 @@ def align_keypoints(keypoints, scale, target_scale, target_center):
     ]
     return aligned_keypoints
 
-# Function to create an overlay video with alignment
-def create_aligned_overlay_video(video1_path, video2_path, output_path):
+def create_aligned_overlay_video(video1_path, video2_path, annotated1_path, annotated2_path, overlay_output_path, side_by_side_annotated_path, side_by_side_original_path):
+    # Extract keypoints and scales
     keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
     keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
 
@@ -277,56 +371,72 @@ def create_aligned_overlay_video(video1_path, video2_path, output_path):
         print("Error: Could not find a valid frame with keypoints for both players.")
         return
 
-    # Initialize video capture and writer
+    # Initialize video capture for all videos
     cap1 = cv2.VideoCapture(video1_path)
     cap2 = cv2.VideoCapture(video2_path)
+    cap_annot1 = cv2.VideoCapture(annotated1_path)
+    cap_annot2 = cv2.VideoCapture(annotated2_path)
 
     # Video properties
     fps = int(cap1.get(cv2.CAP_PROP_FPS))
     width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    # Output video writers
+    overlay_out = cv2.VideoWriter(overlay_output_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
+    side_by_side_annot_out = cv2.VideoWriter(side_by_side_annotated_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width * 2, height))
+    side_by_side_orig_out = cv2.VideoWriter(side_by_side_original_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width * 2, height))
 
     frame_idx = first_valid_frame_idx
     target_center = (0.5, 0.5)  # Normalize to the center of the frame
 
     # Initialize scale ratio based on the first valid frame
-    scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]  # The ratio between the two players' sizes
+    scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]
 
-    while cap1.isOpened() and cap2.isOpened():
+    while cap1.isOpened() and cap2.isOpened() and cap_annot1.isOpened() and cap_annot2.isOpened():
         ret1, frame1 = cap1.read()
         ret2, frame2 = cap2.read()
-        if not ret1 or not ret2 or frame_idx >= len(keypoints1) or frame_idx >= len(keypoints2):
+        ret_annot1, frame_annot1 = cap_annot1.read()
+        ret_annot2, frame_annot2 = cap_annot2.read()
+
+        if not ret1 or not ret2 or not ret_annot1 or not ret_annot2 or frame_idx >= len(keypoints1) or frame_idx >= len(keypoints2):
             break
 
-        # Create a blank frame
+        # Create a blank frame for the overlay video
         blank_frame = np.zeros_like(frame1)
 
-        # Align keypoints
+        # Align keypoints and draw overlay
         if keypoints1[frame_idx] and keypoints2[frame_idx]:
             # Keep the first player's size fixed
-            fixed_scale1 = scales1[frame_idx]  # Use the first player's scale
+            fixed_scale1 = scales1[frame_idx]
+            adjusted_scale2 = scales2[frame_idx] * scale_ratio
 
-            # For the second player, apply the fixed scale ratio calculated from the first valid frame
-            adjusted_scale2 = scales2[frame_idx] * scale_ratio  # Scale the second player's size to match the first player
-
-            # Align the first player's keypoints (keep its size fixed)
             aligned_kp1 = align_keypoints(keypoints1[frame_idx], fixed_scale1, fixed_scale1, target_center)
-            
-            # Align the second player's keypoints (scale it to match the first player based on scale ratio)
             aligned_kp2 = align_keypoints(keypoints2[frame_idx], scales2[frame_idx], adjusted_scale2, target_center)
 
-            # Draw aligned keypoints
             blank_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
 
-        # Write the frame to the output video
-        out.write(blank_frame)
+        # Write to overlay video
+        overlay_out.write(blank_frame)
+
+        # Create side-by-side videos
+        side_by_side_annot = np.hstack((frame_annot1, frame_annot2))
+        side_by_side_orig = np.hstack((frame1, frame2))
+
+        side_by_side_annot_out.write(side_by_side_annot)
+        side_by_side_orig_out.write(side_by_side_orig)
+
         frame_idx += 1
 
+    # Release all resources
     cap1.release()
     cap2.release()
-    out.release()
+    cap_annot1.release()
+    cap_annot2.release()
+    overlay_out.release()
+    side_by_side_annot_out.release()
+    side_by_side_orig_out.release()
+
 
     
 
@@ -654,9 +764,11 @@ my_swing_features = extract_swing_features(my_swing_keypoints)
 pro_swing_features = extract_swing_features(pro_swing_keypoints)
 '''
 
-output_video = 'compare/overlay_output1.mp4'
+annotated_overlay = 'compare/annotated_overlay.mp4'
+annotated_side_by_side = 'compare/side_annotated.mp4'
+original_side_by_side = 'compare/side_original.mp4'
 
 #create_aligned_overlay_video(video1, video2, output_video)
 
 # Call the function to sync the timing and overlay the videos
-sync_video_timings(video1, video2, output_video)
+sync_video_timings(video1, video2, annotated_overlay, original_side_by_side)
