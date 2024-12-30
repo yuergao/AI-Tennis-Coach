@@ -29,8 +29,10 @@ def detect_swing_start(keypoints, threshold=0.5):
             return True
     return False
 
-# Function to calculate arm orientation (straightness) for the right arm
-def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_index=12, left_elbow_index=13, right_elbow_index=14, right_wrist_index=16, start_frame=10):
+def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_index=12, 
+                              left_elbow_index=13, right_elbow_index=14, 
+                              left_wrist_index=15, right_wrist_index=16, 
+                              start_frame=5):
     orientations = []
     for i in range(start_frame, len(keypoints)):
         if keypoints[i] is not None:
@@ -39,6 +41,11 @@ def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_
                 rs_x, rs_y = keypoints[i][right_shoulder_index]
                 re_x, re_y = keypoints[i][right_elbow_index]
                 rw_x, rw_y = keypoints[i][right_wrist_index]
+
+                # Left arm orientation (shoulder, elbow, wrist)
+                ls_x, ls_y = keypoints[i][left_shoulder_index]
+                le_x, le_y = keypoints[i][left_elbow_index]
+                lw_x, lw_y = keypoints[i][left_wrist_index]
 
                 # Calculate angle between shoulder, elbow, and wrist to check straightness (cosine law approach)
                 # Vector from shoulder to elbow
@@ -56,16 +63,24 @@ def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_
                 cos_angle = dot_product / (arm_magnitude * forearm_magnitude)
                 straightness = 1 - abs(cos_angle)  # Closer to 0 means more straight
 
-                # Add the straightness and wrist's x position to check its horizontal alignment
-                orientations.append((straightness, rw_x))
+                # Check if the left arm is not on the right side of the body
+                # Using a basic assumption that the body center is the average of both shoulders
+                body_center_x = (rs_x + ls_x) / 2
+                left_arm_not_on_right_side = lw_x <= body_center_x
+
+                # Add the straightness and wrist's x position for the right arm to check its horizontal alignment
+                if left_arm_not_on_right_side:
+                    orientations.append((straightness, rw_x))  # Track right arm's straightness and wrist position
+                else:
+                    orientations.append((1, 0))  # Invalid frame where left arm is on the right side of the body
             except:
-                orientations.append((1, 0))  # Default values in case of error
+                orientations.append((1, 0))  # Default values in case of error or missing keypoints
         else:
-            orientations.append((1, 0))  # Default values in case of missing keypoints
+            orientations.append((1, 0))  # Default values for missing keypoints
     return orientations
 
-# Function to find the 5-frame segment with the lowest average straightness (most extended arm)
-def find_most_aligned_segment(arm_orientations, segment_length=5):
+# Function to find the segment with the lowest average straightness (most extended arm)
+def find_most_aligned_segment(arm_orientations, segment_length=10):
     min_avg_straightness = float('inf')
     best_segment_start = None
 
@@ -77,7 +92,10 @@ def find_most_aligned_segment(arm_orientations, segment_length=5):
         if avg_straightness < min_avg_straightness:
             min_avg_straightness = avg_straightness
             best_segment_start = i
-
+    
+    if best_segment_start is None:
+        print("Error: Could not find valid aligned segments with arm straightness.")
+        
     return best_segment_start
     
     
@@ -152,17 +170,12 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     aligned_segment1_start = find_most_aligned_segment(arm_orientation1)
     aligned_segment2_start = find_most_aligned_segment(arm_orientation2)
 
-    if aligned_segment1_start is None or aligned_segment2_start is None:
-        print("Error: Could not find valid aligned segments with arm straightness.")
-        return
-
-
     # Calculate the time offset based on the aligned segments
     time_offset = aligned_segment2_start - aligned_segment1_start
 
     # Debugging: Print the start and end frames for both videos
-    print(f"Video 1 start segment: {aligned_segment1_start + 5}, stop segment: {aligned_segment1_start + 5 + 5}")
-    print(f"Video 2 start segment: {aligned_segment2_start + 5}, stop segment: {aligned_segment2_start + 5 + 5}")
+    #print(f"Video 1 start segment: {aligned_segment1_start + 5}, stop segment: {aligned_segment1_start + 5 + 5}")
+    #print(f"Video 2 start segment: {aligned_segment2_start + 5}, stop segment: {aligned_segment2_start + 5 + 5}")
     print(f"Time offset between Video 1 and Video 2: {time_offset} frames")
 
     # Open videos for reading
@@ -749,8 +762,12 @@ for video in videos:
  '''
     
 # Paths to your videos
-video1 = 'compare/me.mov'
-video2 = 'compare/badosa.mov'
+folder = 'compare/'
+extension = '.mov'
+vid1 = 'me_horizontal'
+vid2 = 'swing2'
+video1 = folder + vid1 + extension
+video2 = folder + vid2 + extension
 
 #extract_and_annotate("videos/Federer1.mov", 'results/Federer1.mov')
 
@@ -764,9 +781,8 @@ my_swing_features = extract_swing_features(my_swing_keypoints)
 pro_swing_features = extract_swing_features(pro_swing_keypoints)
 '''
 
-annotated_overlay = 'compare/annotated_overlay.mp4'
-annotated_side_by_side = 'compare/side_annotated.mp4'
-original_side_by_side = 'compare/side_original.mp4'
+annotated_overlay = folder + vid1 + '_' + vid2 + '_overlay.mp4'
+original_side_by_side = folder + vid1  + '_' +  vid2 + '_comapre.mp4'
 
 #create_aligned_overlay_video(video1, video2, output_video)
 
