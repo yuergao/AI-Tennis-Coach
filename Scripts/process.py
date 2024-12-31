@@ -80,7 +80,7 @@ def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_
     return orientations
 
 # Function to find the segment with the lowest average straightness (most extended arm)
-def find_most_aligned_segment(arm_orientations, segment_length=10):
+def find_most_aligned_segment(arm_orientations, segment_length=15):
     min_avg_straightness = float('inf')
     best_segment_start = None
 
@@ -120,29 +120,63 @@ def resize_and_pad(frame, target_width, target_height):
 
     return padded_frame
 
-def sync_video_timings(video1_path, video2_path, output_path, top_bottom_original_path):  
-    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
-    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+def drop_frames_to_match_fps(video_path, target_fps, output_path):
+    """
+    Adjusts the frame rate of a video by dropping frames to match the target FPS.
+    
+    Args:
+        video_path (str): Path to the input video.
+        target_fps (float): Target frames per second.
+        output_path (str): Path to save the output video.
+    """
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError(f"Cannot open video file: {video_path}")
+    
+    # Get input video properties
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    first_valid_frame_idx = None
-    for idx in range(len(keypoints1)):
-        if keypoints1[idx] is not None and keypoints2[idx] is not None:
-            first_valid_frame_idx = idx
+    print(f"Original FPS: {original_fps}, Target FPS: {target_fps}, Total Frames: {frame_count}")
+
+    # Validate FPS
+    if target_fps > original_fps:
+        raise ValueError("Target FPS cannot be higher than the original FPS.")
+
+    # Calculate frame skipping interval
+    skip_interval = original_fps / target_fps
+
+    # Initialize VideoWriter
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
+    if not out.isOpened():
+        raise IOError(f"Cannot create output video file: {output_path}")
+
+    frame_idx = 0  # Keep track of current frame index
+    frames_written = 0  # Track the number of frames written
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:  # End of video
             break
 
-    if first_valid_frame_idx is None:
-        print("Error: Could not find a valid frame with keypoints for both players.")
-        return
+        # Write frames that align with the skip interval
+        if int(frame_idx / skip_interval) == frames_written:
+            out.write(frame)
+            frames_written += 1
 
-    arm_orientation1 = calculate_arm_orientation(keypoints1, start_frame=5)
-    arm_orientation2 = calculate_arm_orientation(keypoints2, start_frame=5)
+        frame_idx += 1
 
-    aligned_segment1_start = find_most_aligned_segment(arm_orientation1)
-    aligned_segment2_start = find_most_aligned_segment(arm_orientation2)
-
-    time_offset = aligned_segment2_start - aligned_segment1_start
-
-    print(f"Time offset between {video1_path} and {video2_path}: {time_offset} frames")
+    # Release resources
+    cap.release()
+    out.release()
+    print(f"Video processed successfully and saved to {output_path}")
+    
+    
+def sync_video_timings(video1_path, video2_path, output_path, top_bottom_original_path):  
 
     cap1 = cv2.VideoCapture(video1_path)
     cap2 = cv2.VideoCapture(video2_path)
@@ -153,7 +187,23 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
 
     fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
     fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
-    max_fps = max(fps1, fps2)
+    
+    # sync videos to lower fps
+    if fps1 != fps2:
+        if fps1 > fps2:
+            newpath = video1_path[:-4] + '_reduced_fps.mov'
+            drop_frames_to_match_fps(video1_path,fps2,newpath)
+            video1_path = newpath
+            cap1 = cv2.VideoCapture(video1_path)
+            fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
+        else:
+            newpath = video2_path[:-4]  + '_reduces_fps.mov'
+            drop_frames_to_match_fps(video2_path,fps1,newpath)
+            video2_path = newpath
+            cap2 = cv2.VideoCapture(video2_path)
+            fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
+    
+    # find output video ratio
     original_width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
     original_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -168,9 +218,35 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
         output_video_width = target_width
         output_video_height = target_height * 2
 
+    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
+    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+
+
+    # find first valid frame between 2 videos 
+    first_valid_frame_idx = None
+    for idx in range(len(keypoints1)):
+        if keypoints1[idx] is not None and keypoints2[idx] is not None:
+            first_valid_frame_idx = idx
+            break
+
+    if first_valid_frame_idx is None:
+        print("Error: Could not find a valid frame with keypoints for both players.")
+        return
+
+    # use body metrics to calculate time offset and sync player swings
+    arm_orientation1 = calculate_arm_orientation(keypoints1, start_frame=5)
+    arm_orientation2 = calculate_arm_orientation(keypoints2, start_frame=5)
+
+    aligned_segment1_start = find_most_aligned_segment(arm_orientation1)
+    aligned_segment2_start = find_most_aligned_segment(arm_orientation2)
+
+    time_offset = aligned_segment2_start - aligned_segment1_start
+
+    print(f"Time offset between {video1_path} and {video2_path}: {time_offset} frames")
     
-    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), max_fps, (target_width, target_height))   
-    out3 = cv2.VideoWriter(top_bottom_original_path, cv2.VideoWriter_fourcc(*'mp4v'), max_fps, (output_video_width, output_video_height))
+    min_fps = min(fps1, fps2)
+    out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (target_width, target_height))   
+    out3 = cv2.VideoWriter(top_bottom_original_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
 
     scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]
 
@@ -187,26 +263,18 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
             frame_idx1 += 1
 
     # Frame counters
-    frame_interval1 = int(max_fps / fps1)
-    frame_interval2 = int(max_fps / fps2)
     frame_counter1 = 0
     frame_counter2 = 0
     
-    
     while True:
-        # Read frames based on frame counters
-        if frame_counter1 % frame_interval1 == 0:
-            ret1, frame1 = cap1.read()
-            if not ret1:
-                frame1 = np.zeros((original_height, original_width, 3), dtype=np.uint8)  # Placeholder for missing frames
-
-        if frame_counter2 % frame_interval2 == 0:
-            ret2, frame2 = cap2.read()
-            if not ret2:
-                frame2 = np.zeros((original_height, original_width, 3), dtype=np.uint8)  # Placeholder for missing frames
-
+        ret1, frame1 = cap1.read()
+        ret2, frame2 = cap2.read()
 
         if not ret1 or not ret2:
+            break
+        
+        # Stop when one video ends (based on the shorter video)
+        if frame_idx1 > len(keypoints1) or frame_idx2 > len(keypoints2):
             break
 
 
@@ -235,7 +303,8 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
 
         frame_idx1 += 1
         frame_idx2 += 1
-        
+        frame_counter1 += 1
+        frame_counter2 += 1
 
     cap1.release()
     cap2.release()
@@ -729,7 +798,7 @@ for video in videos:
 folder = 'compare/'
 extension = '.mov'
 vid1 = 'me_horizontal'
-vid2 = 'swing2'
+vid2 = 'swing5'
 video1 = folder + vid1 + extension
 video2 = folder + vid2 + extension
 
