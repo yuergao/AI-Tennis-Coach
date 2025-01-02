@@ -81,7 +81,6 @@ def calculate_body_orientation(keypoints):
 
                 # Calculate left hand and right wrist distances
                 left_hand_position = lw_x - rs_x
-                right_wrist_distance = rw_x - rs_x
 
                 # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
                 elbow_angle_left = calculate_angle([ls_x, ls_y], [le_x, le_y], [lw_x, lw_y])
@@ -93,11 +92,11 @@ def calculate_body_orientation(keypoints):
                     "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
                     "alignment_score": alignment_score,
                     "left_hand_position": left_hand_position,
-                    "right_wrist_distance": right_wrist_distance,
                     "rw_x": rw_x,  # x-coordinate of the right wrist
                     "rs_x":rs_x,
                     "rh_x": rh_x,
                     "re_x":re_x,
+                    "lw_x": lw_x,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })
@@ -109,27 +108,39 @@ def calculate_body_orientation(keypoints):
 
 # Pose 1 Criteria: Body rotated as far right as possible (body_rotation as negative as possible), left hand extended
 # and left arm as straight as possible (least elbow bend)
-def pose1_criteria(orientation):
+def pose1_criteria(orientation, i):
     # Body rotation should be negative (right rotated)
     # Left hand extended should be positive
     # Elbow angles (left) should be minimized (as straight as possible)
-    print(orientation["body_rotation"] - orientation["left_hand_position"] + 
+    score = (orientation["body_rotation"] - orientation["left_hand_position"] + 
             orientation["elbow_angle_left"])
-    return (orientation["body_rotation"] - orientation["left_hand_position"] + 
-            orientation["elbow_angle_left"])
-
-def pose2_criteria(orientation):
+    print(f"frame{i}: {score}")
+    return score
+def pose2_criteria(orientation, i):
+    """
+    Criteria for evaluating a pose.
+    
+    Parameters:
+        orientation (dict): A dictionary containing keypoints of the pose.
+    
+    Returns:
+        float: A score based on the criteria (lower is better).
+    """
     # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
     body_rotation_score = abs(orientation["body_rotation"])
 
-    # Ensure the entire right arm is on the right side of the body (i.e., wrist and elbow are both on the right of shoulder and hip)
+    # Ensure the entire right arm is on the right side of the body
     arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
-
     arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
 
+    # Ensure the left hand is to the left of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
+
     # Combine all criteria (can be weighted if necessary)
-    total_score = body_rotation_score + arm_on_right_side_score
-    print(total_score)
+    total_score = body_rotation_score + arm_on_right_side_score + left_hand_position_score
+    if total_score < float("inf"):
+        print(f"frame{i}: {total_score}")  # Debugging output
     return total_score
   
 def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
@@ -137,8 +148,7 @@ def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
     best_score = float("inf")
     for i, orientation in enumerate(orientations[start_frame:end_frame], start=start_frame):
         if orientation:
-            print(i)
-            score = criteria(orientation)
+            score = criteria(orientation, i)
             if score < best_score:
                 best_score = score
                 best_frame = i
@@ -316,7 +326,7 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
 
     # use body metrics to calculate time offset and sync player swings
     time_offset = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
-    time_offset = time_offset[1][1] - time_offset[1][0]
+    time_offset = time_offset[0][1] - time_offset[0][0]
     print(f"Time offset between {video1_path} and {video2_path} start swing: {time_offset} frames")
     
     min_fps = min(fps1, fps2)
@@ -872,7 +882,7 @@ for video in videos:
 # Paths to your videos
 folder = 'compare/'
 extension = '.mov'
-vid1 = 'me_horizontal'
+vid1 = '3.0_forehand'
 vid2 = 'swing2'
 video1 = folder + vid1 + extension
 video2 = folder + vid2 + extension
