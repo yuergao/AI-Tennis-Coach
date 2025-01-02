@@ -29,73 +29,154 @@ def detect_swing_start(keypoints, threshold=0.5):
             return True
     return False
 
-def calculate_arm_orientation(keypoints, left_shoulder_index=11, right_shoulder_index=12, 
-                              left_elbow_index=13, right_elbow_index=14, 
-                              left_wrist_index=15, right_wrist_index=16, 
-                              start_frame=5):
+
+# Function to calculate the angle between three points (p1, p2, p3) using the law of cosines
+def calculate_angle(p1, p2, p3):
+    # Calculate the vector from p2 to p1 and from p2 to p3
+    v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
+    v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+    
+    # Calculate the dot product and the magnitudes of the vectors
+    dot_product = np.dot(v1, v2)
+    magnitude_v1 = np.linalg.norm(v1)
+    magnitude_v2 = np.linalg.norm(v2)
+    
+    # Calculate the angle in radians and convert it to degrees
+    angle = np.arccos(dot_product / (magnitude_v1 * magnitude_v2))
+    return np.degrees(angle)
+
+
+# Function to calculate body orientation and distances for each frame
+def calculate_body_orientation(keypoints):
     orientations = []
-    for i in range(start_frame, len(keypoints)):
-        if keypoints[i] is not None:
+    for keypoint in keypoints:
+        if keypoint is not None:
             try:
-                # Right arm orientation (shoulder, elbow, wrist)
-                rs_x, rs_y = keypoints[i][right_shoulder_index]
-                re_x, re_y = keypoints[i][right_elbow_index]
-                rw_x, rw_y = keypoints[i][right_wrist_index]
+                # Key body points (only x and y coordinates are used for rotation along the y-axis)
+                rs_x, rs_y = keypoint[12][:2]  # Right shoulder
+                ls_x, ls_y = keypoint[11][:2]  # Left shoulder
+                rh_x, rh_y = keypoint[24][:2]  # Right hip
+                lh_x, lh_y = keypoint[23][:2]  # Left hip
+                lw_x, lw_y = keypoint[15][:2]  # Left wrist
+                rw_x, rw_y = keypoint[16][:2]  # Right wrist
+                le_x, le_y = keypoint[13][:2]  # Left elbow
+                re_x, re_y = keypoint[14][:2]  # Right elbow
+                # Calculate shoulder and hip rotation angles
+                shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
+                hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
 
-                # Left arm orientation (shoulder, elbow, wrist)
-                ls_x, ls_y = keypoints[i][left_shoulder_index]
-                le_x, le_y = keypoints[i][left_elbow_index]
-                lw_x, lw_y = keypoints[i][left_wrist_index]
+                # Convert to degrees for easier interpretation
+                shoulder_rotation_deg = np.degrees(shoulder_rotation)
+                hip_rotation_deg = np.degrees(hip_rotation)
 
-                # Calculate angle between shoulder, elbow, and wrist to check straightness (cosine law approach)
-                # Vector from shoulder to elbow
-                arm_vec_x = re_x - rs_x
-                arm_vec_y = re_y - rs_y
-                # Vector from elbow to wrist
-                forearm_vec_x = rw_x - re_x
-                forearm_vec_y = rw_y - re_y
-                # Dot product to check alignment
-                dot_product = arm_vec_x * forearm_vec_x + arm_vec_y * forearm_vec_y
-                arm_magnitude = np.sqrt(arm_vec_x**2 + arm_vec_y**2)
-                forearm_magnitude = np.sqrt(forearm_vec_x**2 + forearm_vec_y**2)
+                # Normalize angles: forward-facing body as 0 degrees
+                shoulder_rotation_deg_normalized = shoulder_rotation_deg + 90
+                hip_rotation_deg_normalized = hip_rotation_deg + 90
 
-                # Cosine of the angle between vectors (ideal is 1 if perfectly straight)
-                cos_angle = dot_product / (arm_magnitude * forearm_magnitude)
-                straightness = 1 - abs(cos_angle)  # Closer to 0 means more straight
+                # Average shoulder and hip rotation for body rotation
+                body_rotation = (shoulder_rotation_deg_normalized + hip_rotation_deg_normalized) / 2
 
-                # Check if the left arm is not on the right side of the body
-                # Using a basic assumption that the body center is the average of both shoulders
-                body_center_x = (rs_x + ls_x) / 2
-                left_arm_not_on_right_side = lw_x <= body_center_x
+                # Calculate alignment score (based on alignment of shoulders and hips along the y-axis)
+                alignment_score = abs(rs_y - ls_y) + abs(rh_y - lh_y)
 
-                # Add the straightness and wrist's x position for the right arm to check its horizontal alignment
-                if left_arm_not_on_right_side:
-                    orientations.append((straightness, rw_x))  # Track right arm's straightness and wrist position
-                else:
-                    orientations.append((1, 0))  # Invalid frame where left arm is on the right side of the body
-            except:
-                orientations.append((1, 0))  # Default values in case of error or missing keypoints
+                # Calculate left hand and right wrist distances
+                left_hand_position = lw_x - rs_x
+                right_wrist_distance = rw_x - rs_x
+
+                # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
+                elbow_angle_left = calculate_angle([ls_x, ls_y], [le_x, le_y], [lw_x, lw_y])
+
+                # Calculate the angle between right shoulder, right elbow, and right wrist (to check for elbow bend)
+                elbow_angle_right = calculate_angle([rs_x, rs_y], [re_x, re_y], [rw_x, rw_y])
+
+                orientations.append({
+                    "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
+                    "alignment_score": alignment_score,
+                    "left_hand_position": left_hand_position,
+                    "right_wrist_distance": right_wrist_distance,
+                    "rw_x": rw_x,  # x-coordinate of the right wrist
+                    "rs_x":rs_x,
+                    "rh_x": rh_x,
+                    "re_x":re_x,
+                    "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
+                    "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
+                })
+            except Exception as e:
+                orientations.append(None)
         else:
-            orientations.append((1, 0))  # Default values for missing keypoints
+            orientations.append(None)
     return orientations
 
-# Function to find the segment with the lowest average straightness (most extended arm)
-def find_most_aligned_segment(arm_orientations, segment_length=15):
-    min_avg_straightness = float('inf')
-    best_segment_start = None
+# Pose 1 Criteria: Body rotated as far right as possible (body_rotation as negative as possible), left hand extended
+# and left arm as straight as possible (least elbow bend)
+def pose1_criteria(orientation):
+    # Body rotation should be negative (right rotated)
+    # Left hand extended should be positive
+    # Elbow angles (left) should be minimized (as straight as possible)
+    print(orientation["body_rotation"] - orientation["left_hand_position"] + 
+            orientation["elbow_angle_left"])
+    return (orientation["body_rotation"] - orientation["left_hand_position"] + 
+            orientation["elbow_angle_left"])
 
-    for i in range(len(arm_orientations) - segment_length + 1):
-        segment = arm_orientations[i:i + segment_length]
-        avg_straightness = np.mean([s[0] for s in segment])  # Average straightness of the segment
+def pose2_criteria(orientation):
+    # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
+    body_rotation_score = abs(orientation["body_rotation"])
 
-        if avg_straightness < min_avg_straightness:
-            min_avg_straightness = avg_straightness
-            best_segment_start = i
+    # Ensure the entire right arm is on the right side of the body (i.e., wrist and elbow are both on the right of shoulder and hip)
+    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
+
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Combine all criteria (can be weighted if necessary)
+    total_score = body_rotation_score + arm_on_right_side_score
+    print(total_score)
+    return total_score
+  
+def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
+    best_frame = None
+    best_score = float("inf")
+    for i, orientation in enumerate(orientations[start_frame:end_frame], start=start_frame):
+        if orientation:
+            print(i)
+            score = criteria(orientation)
+            if score < best_score:
+                best_score = score
+                best_frame = i
+    return best_frame  
+
+
+# Function to find the best matching frames for each pose
+def find_most_parallel_and_furthest_segment(keypoints1, keypoints2):
     
-    if best_segment_start is None:
-        print("Error: Could not find valid aligned segments with arm straightness.")
-        
-    return best_segment_start
+    # Calculate orientations for both videos
+    video1_orientations = calculate_body_orientation(keypoints1)
+    video2_orientations = calculate_body_orientation(keypoints2)
+
+    # Find best frames for Pose 1 in both videos
+    print("---------vid 1 pose 1---------")
+    video1_pose1_frame = find_best_frame(video1_orientations, pose1_criteria)
+    print("---------vid 2 pose 1---------")
+    video2_pose1_frame = find_best_frame(video2_orientations, pose1_criteria)
+
+    # Pose 2 is only evaluated after Pose 1 is found, and it should start after Pose 1 frame
+    if video1_pose1_frame is not None and video2_pose1_frame is not None:
+        print("---------vid 1 pose 2---------")
+        video1_pose2_frame = find_best_frame(video1_orientations, pose2_criteria, start_frame=video1_pose1_frame + 1)
+        print("---------vid 2 pose 2---------")
+        video2_pose2_frame = find_best_frame(video2_orientations, pose2_criteria, start_frame=video2_pose1_frame + 1)
+    else:
+        # If Pose 1 is not found, Pose 2 cannot be evaluated
+        video1_pose2_frame = None
+        video2_pose2_frame = None
+
+    # Print results
+    print(f"Pose 1: (Video 1 frame = {video1_pose1_frame}, Video 2 frame = {video2_pose1_frame})")
+    print(f"Pose 2: (Video 1 frame = {video1_pose2_frame}, Video 2 frame = {video2_pose2_frame})")
+
+    return (
+        (video1_pose1_frame, video2_pose1_frame),
+        (video1_pose2_frame, video2_pose2_frame)
+    )
 
 def resize_and_pad(frame, target_width, target_height):
     original_height, original_width = frame.shape[:2]
@@ -234,15 +315,9 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
         return
 
     # use body metrics to calculate time offset and sync player swings
-    arm_orientation1 = calculate_arm_orientation(keypoints1, start_frame=5)
-    arm_orientation2 = calculate_arm_orientation(keypoints2, start_frame=5)
-
-    aligned_segment1_start = find_most_aligned_segment(arm_orientation1)
-    aligned_segment2_start = find_most_aligned_segment(arm_orientation2)
-
-    time_offset = aligned_segment2_start - aligned_segment1_start
-
-    print(f"Time offset between {video1_path} and {video2_path}: {time_offset} frames")
+    time_offset = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
+    time_offset = time_offset[1][1] - time_offset[1][0]
+    print(f"Time offset between {video1_path} and {video2_path} start swing: {time_offset} frames")
     
     min_fps = min(fps1, fps2)
     out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (target_width, target_height))   
@@ -798,7 +873,7 @@ for video in videos:
 folder = 'compare/'
 extension = '.mov'
 vid1 = 'me_horizontal'
-vid2 = 'swing5'
+vid2 = 'swing2'
 video1 = folder + vid1 + extension
 video2 = folder + vid2 + extension
 
