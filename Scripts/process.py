@@ -269,7 +269,8 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path):
     
     
 def sync_video_timings(video1_path, video2_path, output_path, top_bottom_original_path):  
-
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(top_bottom_original_path), exist_ok=True)
     cap1 = cv2.VideoCapture(video1_path)
     cap2 = cv2.VideoCapture(video2_path)
 
@@ -283,13 +284,15 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     # sync videos to lower fps
     if fps1 != fps2:
         if fps1 > fps2:
-            newpath = video1_path[:-4] + '_reduced_fps.mp4'
+            paths  = video1_path.split('/')
+            newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{fps2}_fps.mp4'
             drop_frames_to_match_fps(video1_path,fps2,newpath)
             video1_path = newpath
             cap1 = cv2.VideoCapture(video1_path)
             fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
         else:
-            newpath = video2_path[:-4]  + '_reduces_fps.mp4'
+            paths  = video2_path.split('/')
+            newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{fps1}_fps.mp4'
             drop_frames_to_match_fps(video2_path,fps1,newpath)
             video2_path = newpath
             cap2 = cv2.VideoCapture(video2_path)
@@ -360,6 +363,7 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     frame_counter2 = 0
     
     # ------------------Choose frames to be duplicated, curr assumes vid2 pro swing is shorter------------------
+    # TODO: detect which video swing is longer and sync accordingly. currently assume player1 swing is longer
     dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
     if vid1_swing_len > vid2_swing_len: #video 1 has the longer swing, duplicate vid2 pro frames
         frame_diff = vid1_swing_len - vid2_swing_len
@@ -882,45 +886,23 @@ def extract_swing_features(keypoints):
 
     # Return the features as a tuple of lists
     return wrist_positions, elbow_positions, shoulder_positions, hip_positions
-
-'''-----------------------------------------------------Begin Driver-----------------------------------------------------'''
-# Example Usage
 '''
-videos = ["Federer.mov"]
-for video in videos:
-    video_path = 'videos/' + video  # Path to user video
-    output_path = f'results/{video}/'
-    #clear_output_folder(output_path)
-    
-   zExtract keypoints from the video
-    keypoints = extract_keypoints(video_path)
-
-    # Detect swing boundaries
-    swing_frames = detect_swing_boundaries(keypoints)
-
-    # Segment swings based on the detected frames
-    swing_segments = segment_swings(swing_frames)
-
-    print(f"Detected {len(swing_segments)} swings.")
-
-    # Process each swing and extract video segments
-    for idx, (start_frame, end_frame) in enumerate(swing_segments):
-        if start_frame >= 0 and end_frame > start_frame:
-            extract_motion_segment(video_path, start_frame, end_frame, f'results/{video}/swing{idx+1}.mov')
- '''
-    
+-----------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------- Begin Driver--------------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------
+'''
 # User inputs
 # TODO: make into classes
 swing_type = 'forehand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 1
+player1_vid_idx = 3
 player1_swing_idx = 1
 
 player2 = 'badosa'
 player2_vid_idx = 1
-player2_swing_idx = 4
+player2_swing_idx = 2
 
 
 # construct based on user inputs
@@ -933,28 +915,78 @@ player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
+pipeline1 = True
+pipeline2 = True
+
+'''
+-----------------------------------------------------------------------------------------------------------------------------------
+---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------
+'''
+
+# TODO: detect swing types (forehand, backhand) and output into respective folders, for now all forehand
+original_video1_path = f"{player1}/{player1_vid}/{player1_vid}{extension}"
+original_video2_path = f"{player2}/{player2_vid}/{player2_vid}{extension}"
+
+''' controls which video to be segmented'''
+video_paths = [original_video1_path]
 
 #extract_and_annotate("videos/Federer1.mp4", 'results/Federer1.mp4')
 
+# Extract keypoints for each video 
+#my_swing_keypoints = extract_keypoints_from_video(video1_path)
+#pro_swing_keypoints = extract_keypoints_from_video(video2_path)
+
+# Extract swing features for comparison and feedback
+#my_swing_features = extract_swing_features(my_swing_keypoints)
+#pro_swing_features = extract_swing_features(pro_swing_keypoints)
+
+if pipeline1:
+    for video_path in video_paths:
+        output_levels = video_path.split('/')
+        output_folder = f"{output_levels[0]}/{output_levels[1]}"   
+        output_path = f"{output_folder}/{swing_type}"
+        
+        clear_output_folder(output_path)
+        
+        #Extract keypoints from the video
+        keypoints = extract_keypoints_from_video(video_path)
+
+        # Detect swing boundaries
+        swing_frames = detect_swing_boundaries(keypoints)
+
+        # Segment swings based on the detected frames
+        swing_segments = segment_swings(swing_frames)
+
+        print(f"Detected {len(swing_segments)} swings.")
+
+        # Process each swing and extract video segments
+        for idx, (start_frame, end_frame) in enumerate(swing_segments):
+            if start_frame >= 0 and end_frame > start_frame:
+                #find previous directory
+                output_video = f"{output_path}/{output_levels[1]}_{swing_type}{idx+1}{extension}"
+                extract_motion_segment(video_path, start_frame, end_frame, output_video)
+
+
 '''
-# Extract keypoints for each video (replace with actual function)
-my_swing_keypoints = extract_keypoints_from_video(video1)
-pro_swing_keypoints = extract_keypoints_from_video(video2)
-
-# Extract swing features (for comparison and feedback)
-my_swing_features = extract_swing_features(my_swing_keypoints)
-pro_swing_features = extract_swing_features(pro_swing_keypoints)
+-----------------------------------------------------------------------------------------------------------------------------------
+---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------
 '''
 
 
-# output 
-player_compare = f"{player1}_{player2}"
-player_compare_vid = f"{player1_vid}_{player2_vid}"
-player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{player1_swing_idx}_{player2_swing_idx}"
-overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
-comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
+# TODO: seperate code into separate files: driver, pipeline1, pipeline2
 
-#create_aligned_overlay_video(video1, video2, output_video)
+if pipeline2:
+    # output 
+    player_compare = f"{player1}_{player2}"
+    player_compare_vid = f"{player1_vid}_{player2_vid}"
+    player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{player1_swing_idx}_{player2_swing_idx}"
+    overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
+    comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
 
-# Call the function to sync the timing and overlay the videos
-sync_video_timings(video1_path, video2_path, overlay_path, comparison_path)
+    #create_aligned_overlay_video(video1, video2, output_video)
+
+    # Call the function to sync the timing and overlay the videos
+    sync_video_timings(video1_path, video2_path, overlay_path, comparison_path)
+
