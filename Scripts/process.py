@@ -114,7 +114,7 @@ def pose1_criteria(orientation, i):
     # Elbow angles (left) should be minimized (as straight as possible)
     score = (orientation["body_rotation"] - orientation["left_hand_position"] + 
             orientation["elbow_angle_left"])
-    print(f"frame{i}: {score}")
+    #print(f"frame{i}: {score}")
     return score
 def pose2_criteria(orientation, i):
     """
@@ -140,7 +140,8 @@ def pose2_criteria(orientation, i):
     # Combine all criteria (can be weighted if necessary)
     total_score = body_rotation_score + arm_on_right_side_score + left_hand_position_score
     if total_score < float("inf"):
-        print(f"frame{i}: {total_score}")  # Debugging output
+        pass
+        #print(f"frame{i}: {total_score}")  # Debugging output
     return total_score
   
 def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
@@ -163,16 +164,16 @@ def find_most_parallel_and_furthest_segment(keypoints1, keypoints2):
     video2_orientations = calculate_body_orientation(keypoints2)
 
     # Find best frames for Pose 1 in both videos
-    print("---------vid 1 pose 1---------")
+    #print("---------vid 1 pose 1---------")
     video1_pose1_frame = find_best_frame(video1_orientations, pose1_criteria)
-    print("---------vid 2 pose 1---------")
+    #print("---------vid 2 pose 1---------")
     video2_pose1_frame = find_best_frame(video2_orientations, pose1_criteria)
 
     # Pose 2 is only evaluated after Pose 1 is found, and it should start after Pose 1 frame
     if video1_pose1_frame is not None and video2_pose1_frame is not None:
-        print("---------vid 1 pose 2---------")
+        #print("---------vid 1 pose 2---------")
         video1_pose2_frame = find_best_frame(video1_orientations, pose2_criteria, start_frame=video1_pose1_frame + 1)
-        print("---------vid 2 pose 2---------")
+        #print("---------vid 2 pose 2---------")
         video2_pose2_frame = find_best_frame(video2_orientations, pose2_criteria, start_frame=video2_pose1_frame + 1)
     else:
         # If Pose 1 is not found, Pose 2 cannot be evaluated
@@ -325,8 +326,15 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
         return
 
     # use body metrics to calculate time offset and sync player swings
-    time_offset = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
-    time_offset = time_offset[0][1] - time_offset[0][0]
+    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
+    vid1_start_sync = frame_sync_stamps[0][0]
+    vid2_start_sync = frame_sync_stamps[0][1]
+    vid1_end_sync = frame_sync_stamps[1][0]
+    vid2_end_sync = frame_sync_stamps[1][1]
+    time_offset = vid2_start_sync - vid1_start_sync #between first poses - prep
+    vid1_swing_len = vid1_end_sync - vid1_start_sync
+    vid2_swing_len = vid2_end_sync - vid2_start_sync
+    
     print(f"Time offset between {video1_path} and {video2_path} start swing: {time_offset} frames")
     
     min_fps = min(fps1, fps2)
@@ -351,18 +359,38 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     frame_counter1 = 0
     frame_counter2 = 0
     
+    # ------------------Choose frames to be duplicated, curr assumes vid2 pro swing is shorter------------------
+    if vid1_swing_len > vid2_swing_len: #video 1 has the longer swing, duplicate vid2 pro frames
+        frame_diff = vid1_swing_len - vid2_swing_len
+        interval = max(1,vid2_swing_len // frame_diff) # so interval at least 1 not 0
+        dup_frame_idx = vid2_start_sync
+        dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
+        for _ in range(frame_diff):
+            dup_frame_idx_list.append(dup_frame_idx)
+            dup_frame_idx+= interval
+        print(f"frames to be duplicated for video 2: {dup_frame_idx_list}")
+        
     while True:
         ret1, frame1 = cap1.read()
-        ret2, frame2 = cap2.read()
+        
+        #skip reading frame2 if it should be duplicated
+        skip = False
+        if frame_idx2 in dup_frame_idx_list:
+            dup_frame_idx_list.remove(frame_idx2)
+            skip = True
+        else:
+            ret2, frame2 = cap2.read()    
 
         if not ret1 or not ret2:
+            print(f"exited{frame_idx1, frame_idx2}")
             break
         
         # Stop when one video ends (based on the shorter video)
         if frame_idx1 > len(keypoints1) or frame_idx2 > len(keypoints2):
             break
-
-
+        print(frame_idx1, frame_idx2)
+        # ------------------     
+            
         if frame_idx1 < len(keypoints1) and frame_idx2 < len(keypoints2):
             if keypoints1[frame_idx1] and keypoints2[frame_idx2]:
 
@@ -387,7 +415,9 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
                 out3.write(combined_frame)
 
         frame_idx1 += 1
-        frame_idx2 += 1
+        # if frame2 is duplicate frane don't increrase idx
+        if not skip:
+            frame_idx2 += 1
         frame_counter1 += 1
         frame_counter2 += 1
 
@@ -882,8 +912,8 @@ for video in videos:
 # Paths to your videos
 folder = 'compare/'
 extension = '.mov'
-vid1 = '3.0_forehand'
-vid2 = 'swing2'
+vid1 = 'audrey_forehand'
+vid2 = 'swing5'
 video1 = folder + vid1 + extension
 video2 = folder + vid2 + extension
 
