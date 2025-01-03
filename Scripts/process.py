@@ -283,13 +283,13 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     # sync videos to lower fps
     if fps1 != fps2:
         if fps1 > fps2:
-            newpath = video1_path[:-4] + '_reduced_fps.mov'
+            newpath = video1_path[:-4] + '_reduced_fps.mp4'
             drop_frames_to_match_fps(video1_path,fps2,newpath)
             video1_path = newpath
             cap1 = cv2.VideoCapture(video1_path)
             fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
         else:
-            newpath = video2_path[:-4]  + '_reduces_fps.mov'
+            newpath = video2_path[:-4]  + '_reduces_fps.mp4'
             drop_frames_to_match_fps(video2_path,fps1,newpath)
             video2_path = newpath
             cap2 = cv2.VideoCapture(video2_path)
@@ -360,11 +360,11 @@ def sync_video_timings(video1_path, video2_path, output_path, top_bottom_origina
     frame_counter2 = 0
     
     # ------------------Choose frames to be duplicated, curr assumes vid2 pro swing is shorter------------------
+    dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
     if vid1_swing_len > vid2_swing_len: #video 1 has the longer swing, duplicate vid2 pro frames
         frame_diff = vid1_swing_len - vid2_swing_len
         interval = max(1,vid2_swing_len // frame_diff) # so interval at least 1 not 0
         dup_frame_idx = vid2_start_sync
-        dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
         for _ in range(frame_diff):
             dup_frame_idx_list.append(dup_frame_idx)
             dup_frame_idx+= interval
@@ -890,9 +890,9 @@ videos = ["Federer.mov"]
 for video in videos:
     video_path = 'videos/' + video  # Path to user video
     output_path = f'results/{video}/'
-    clear_output_folder(output_path)
+    #clear_output_folder(output_path)
     
-    # Extract keypoints from the video
+   zExtract keypoints from the video
     keypoints = extract_keypoints(video_path)
 
     # Detect swing boundaries
@@ -909,15 +909,32 @@ for video in videos:
             extract_motion_segment(video_path, start_frame, end_frame, f'results/{video}/swing{idx+1}.mov')
  '''
     
-# Paths to your videos
-folder = 'compare/'
-extension = '.mov'
-vid1 = 'audrey_forehand'
-vid2 = 'swing5'
-video1 = folder + vid1 + extension
-video2 = folder + vid2 + extension
+# User inputs
+# TODO: make into classes
+swing_type = 'forehand'
+extension = '.mp4'
 
-#extract_and_annotate("videos/Federer1.mov", 'results/Federer1.mov')
+player1 = 'audrey'
+player1_vid_idx = 1
+player1_swing_idx = 1
+
+player2 = 'badosa'
+player2_vid_idx = 1
+player2_swing_idx = 4
+
+
+# construct based on user inputs
+player1_vid = f"{player1}{player1_vid_idx}"
+player1_vid_swing = f"{player1_vid}_{swing_type}{player1_swing_idx}"
+
+player2_vid = f"{player2}{player2_vid_idx}"
+player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
+
+video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
+video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
+
+
+#extract_and_annotate("videos/Federer1.mp4", 'results/Federer1.mp4')
 
 '''
 # Extract keypoints for each video (replace with actual function)
@@ -929,10 +946,15 @@ my_swing_features = extract_swing_features(my_swing_keypoints)
 pro_swing_features = extract_swing_features(pro_swing_keypoints)
 '''
 
-annotated_overlay = folder + vid1 + '_' + vid2 + '_overlay.mp4'
-original_side_by_side = folder + vid1  + '_' +  vid2 + '_comapre.mp4'
+
+# output 
+player_compare = f"{player1}_{player2}"
+player_compare_vid = f"{player1_vid}_{player2_vid}"
+player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{player1_swing_idx}_{player2_swing_idx}"
+overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
+comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
 
 #create_aligned_overlay_video(video1, video2, output_video)
 
 # Call the function to sync the timing and overlay the videos
-sync_video_timings(video1, video2, annotated_overlay, original_side_by_side)
+sync_video_timings(video1_path, video2_path, overlay_path, comparison_path)
