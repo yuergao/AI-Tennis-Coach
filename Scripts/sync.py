@@ -1,0 +1,522 @@
+import os
+import cv2
+import numpy as np
+from mediapipe import solutions as mp_solutions
+
+mp_pose = mp_solutions.pose
+pose = mp_pose.Pose()
+
+# Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
+def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):  
+    
+    # create directories if don't already exist
+    os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
+    os.makedirs(os.path.dirname(comaprison_path), exist_ok=True)
+    
+    #initialize video capture
+    cap1 = cv2.VideoCapture(video1_path)
+    cap2 = cv2.VideoCapture(video2_path)
+
+    if not cap1.isOpened() or not cap2.isOpened():
+        print("Error: Could not open video files.")
+        return
+
+    # match frame rates - sync videos to lower fps
+    fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
+    fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
+    min_fps = min(fps1,fps2)
+    
+    if fps1 > fps2:
+        paths  = video1_path.split('/')
+        newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{min_fps}_fps.mp4'
+        if os.path.exists(newpath) and os.path.isfile(newpath):
+            print(f"dropped frame video exists at {min_fps}")
+        else:
+            drop_frames_to_match_fps(video1_path,min_fps,newpath)
+        video1_path = newpath
+        cap1 = cv2.VideoCapture(video1_path)
+        fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
+        
+    elif fps1 < fps2:
+        paths  = video2_path.split('/')
+        newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{min_fps}_fps.mp4'
+        if os.path.exists(newpath) and os.path.isfile(newpath):
+            print(f"dropped frame video exists at {min_fps}")
+        else:
+            drop_frames_to_match_fps(video2_path,min_fps,newpath)
+        video2_path = newpath
+        cap2 = cv2.VideoCapture(video2_path)
+        fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
+    
+    # find output video ratio based on usesr video input orientation (vid1)
+    vid1_width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
+    vid1_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    if vid1_height > vid1_width:
+        target_width = 720
+        target_height = 1280
+        output_video_width = target_width * 2
+        output_video_height = target_height
+    else:
+        target_width = 1920
+        target_height = 1080
+        output_video_width = target_width
+        output_video_height = target_height * 2
+
+    # extract keypoints with scales in mind
+    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
+    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+
+    
+    # find first valid frame between 2 videos 
+    first_valid_frame_idx = None
+    for idx in range(len(keypoints1)):
+        if keypoints1[idx] is not None and keypoints2[idx] is not None:
+            first_valid_frame_idx = idx
+            break
+
+    if first_valid_frame_idx is None:
+        print("Error: Could not find a valid frame with keypoints for both players.")
+        return
+
+    scale_ratio = scales1[first_valid_frame_idx] / scales2[first_valid_frame_idx]
+    frame_idx1 = first_valid_frame_idx
+    frame_idx2 = first_valid_frame_idx 
+    
+    # initialize video writer
+    out1 = cv2.VideoWriter(overlay_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (target_width, target_height))   
+    out2 = cv2.VideoWriter(comaprison_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
+    
+    # use body metrics to calculate time offset and sync player swings
+    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
+    vid1_start_sync = frame_sync_stamps[0][0]
+    vid2_start_sync = frame_sync_stamps[0][1]
+    vid1_end_sync = frame_sync_stamps[1][0]
+    vid2_end_sync = frame_sync_stamps[1][1]
+    time_offset = vid2_start_sync - vid1_start_sync # time between first poses - prep
+    vid1_swing_len = vid1_end_sync - vid1_start_sync
+    vid2_swing_len = vid2_end_sync - vid2_start_sync  
+    print(f"Time offset: {time_offset} frames")
+    print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
+    print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
+    
+    # sync video start based on first pose
+    if time_offset > 0:
+        for _ in range(time_offset):
+            cap2.read()
+            frame_idx2 += 1
+    elif time_offset < 0:
+        for _ in range(-time_offset):
+            cap1.read()
+            frame_idx1 += 1
+            
+    # Choose frames to be duplicated, curr assumes vid2 pro swing is shorter
+    # TODO: detect which video swing is longer and sync accordingly. currently assume player1 swing is longer
+    dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
+    if vid1_swing_len > vid2_swing_len: #video 1 has the longer swing, duplicate vid2 pro frames
+        frame_diff = vid1_swing_len - vid2_swing_len
+        interval = max(1,vid2_swing_len // frame_diff) # so interval is at least 1 not 0
+        dup_frame_idx = vid2_start_sync
+        for _ in range(frame_diff):
+            dup_frame_idx_list.append(dup_frame_idx)
+            dup_frame_idx+= interval
+        print(f"frames to be duplicated for video 2: {dup_frame_idx_list}")
+        
+    
+    # enter frame processing loop    
+    while True:
+        
+        # reads frame (TODO: change parts for swing length auto detection at dup_frame_idx_list = [])
+        ret1, frame1 = cap1.read()
+        skip = False # skip reading frame2 if it should be duplicated
+        if frame_idx2 in dup_frame_idx_list:
+            dup_frame_idx_list.remove(frame_idx2)
+            skip = True
+        else:
+            ret2, frame2 = cap2.read()    
+
+        if not ret1 or not ret2:
+            break
+        
+        # Stop when the shorter video ends
+        if frame_idx1 > len(keypoints1) or frame_idx2 > len(keypoints2):
+            break
+         
+        # process valid frames, bulk of video processing    
+        if frame_idx1 < len(keypoints1) and frame_idx2 < len(keypoints2):
+            if keypoints1[frame_idx1] and keypoints2[frame_idx2]:
+
+                fixed_scale1 = scales1[frame_idx1]
+                adjusted_scale2 = scales2[frame_idx2] * scale_ratio
+                aligned_kp1 = align_keypoints(keypoints1[frame_idx1], fixed_scale1, fixed_scale1, target_center=(0.5, 0.5))
+                aligned_kp2 = align_keypoints(keypoints2[frame_idx2], scales2[frame_idx2], adjusted_scale2, target_center=(0.5, 0.5))
+
+                blank_frame = np.zeros_like(frame1)
+                overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
+
+                overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
+                padded_frame1 = resize_and_pad(frame1, target_width, target_height)
+                padded_frame2 = resize_and_pad(frame2, target_width, target_height)
+
+                # combine videos based on video input orientation
+                # TODO: auto use verticle or horizontal vid2 according to vid1 orientation
+                if vid1_height > vid1_width:
+                    combined_frame = np.hstack([padded_frame1, padded_frame2])
+                else:
+                    combined_frame = np.vstack([padded_frame1, padded_frame2])
+
+                out1.write(overlay_frame)
+                out2.write(combined_frame)
+
+        frame_idx1 += 1
+        if not skip: # if frame2 is duplicate frame don't increrase idx
+            frame_idx2 += 1
+
+    cap1.release()
+    cap2.release()
+    out1.release()
+    out2.release()
+
+    print(f"overlay video saved to {overlay_path}")
+    print(f"comparison video saved to {comaprison_path}")
+    
+    
+# Function to overlay keypoints onto a blank frame. 
+# called by sync_video_timings
+def draw_overlay(frame, keypoints1, keypoints2, color1=(0, 255, 0), color2=(0, 0, 255)):
+    """
+    Draws the keypoints of two sets of landmarks onto a given frame.
+    
+    :param frame: The blank frame onto which keypoints are drawn.
+    :param keypoints1: Aligned keypoints for the first person.
+    :param keypoints2: Aligned keypoints for the second person.
+    :param color1: Color for the first person's keypoints.
+    :param color2: Color for the second person's keypoints.
+    """
+    height, width, _ = frame.shape
+
+    # Draw keypoints for the first person
+    if keypoints1:
+        for x1, y1 in keypoints1:
+            px1, py1 = int(x1 * width), int(y1 * height)
+            cv2.circle(frame, (px1, py1), 5, color1, -1)
+
+    # Draw keypoints for the second person
+    if keypoints2:
+        for x2, y2 in keypoints2:
+            px2, py2 = int(x2 * width), int(y2 * height)
+            cv2.circle(frame, (px2, py2), 5, color2, -1)
+
+    return frame
+
+# Function to calculate the angle between three points (p1, p2, p3) using the law of cosines
+# called by calculate_body_orientation
+def calculate_angle(p1, p2, p3):
+    # Calculate the vector from p2 to p1 and from p2 to p3
+    v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
+    v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+    
+    # Calculate the dot product and the magnitudes of the vectors
+    dot_product = np.dot(v1, v2)
+    magnitude_v1 = np.linalg.norm(v1)
+    magnitude_v2 = np.linalg.norm(v2)
+    
+    # Calculate the angle in radians and convert it to degrees
+    angle = np.arccos(dot_product / (magnitude_v1 * magnitude_v2))
+    return np.degrees(angle)
+
+
+# Function to calculate body orientation and distances for each frame
+# called by find_most_parallel_and_furthest_segment
+def calculate_body_orientation(keypoints):
+    orientations = []
+    for keypoint in keypoints:
+        if keypoint is not None:
+            try:
+                # Key body points (only x and y coordinates are used for rotation along the y-axis)
+                rs_x, rs_y = keypoint[12][:2]  # Right shoulder
+                ls_x, ls_y = keypoint[11][:2]  # Left shoulder
+                rh_x, rh_y = keypoint[24][:2]  # Right hip
+                lh_x, lh_y = keypoint[23][:2]  # Left hip
+                lw_x, lw_y = keypoint[15][:2]  # Left wrist
+                rw_x, rw_y = keypoint[16][:2]  # Right wrist
+                le_x, le_y = keypoint[13][:2]  # Left elbow
+                re_x, re_y = keypoint[14][:2]  # Right elbow
+                # Calculate shoulder and hip rotation angles
+                shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
+                hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
+
+                # Convert to degrees for easier interpretation
+                shoulder_rotation_deg = np.degrees(shoulder_rotation)
+                hip_rotation_deg = np.degrees(hip_rotation)
+
+                # Normalize angles: forward-facing body as 0 degrees
+                shoulder_rotation_deg_normalized = shoulder_rotation_deg + 90
+                hip_rotation_deg_normalized = hip_rotation_deg + 90
+
+                # Average shoulder and hip rotation for body rotation
+                body_rotation = (shoulder_rotation_deg_normalized + hip_rotation_deg_normalized) / 2
+
+                # Calculate alignment score (based on alignment of shoulders and hips along the y-axis)
+                alignment_score = abs(rs_y - ls_y) + abs(rh_y - lh_y)
+
+                # Calculate left hand and right wrist distances
+                left_hand_position = lw_x - rs_x
+
+                # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
+                elbow_angle_left = calculate_angle([ls_x, ls_y], [le_x, le_y], [lw_x, lw_y])
+
+                # Calculate the angle between right shoulder, right elbow, and right wrist (to check for elbow bend)
+                elbow_angle_right = calculate_angle([rs_x, rs_y], [re_x, re_y], [rw_x, rw_y])
+
+                orientations.append({
+                    "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
+                    "alignment_score": alignment_score,
+                    "left_hand_position": left_hand_position,
+                    "rw_x": rw_x,  # x-coordinate of the right wrist
+                    "rs_x":rs_x,
+                    "rh_x": rh_x,
+                    "re_x":re_x,
+                    "lw_x": lw_x,
+                    "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
+                    "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
+                })
+            except Exception as e:
+                orientations.append(None)
+        else:
+            orientations.append(None)
+    return orientations
+
+
+"""
+Criterias for evaluating pose1 and pose2
+Parameters:
+    orientation (dict): A dictionary containing keypoints of the pose.
+    i: frame
+Returns:
+    float: A score based on the criteria (lower is better).
+"""
+# Pose 1 Criteria: Body rotated as far right as possible (body_rotation as negative as possible), left hand extended
+# and left arm as straight as possible (least elbow bend)
+def pose1_criteria(orientation, i):
+    # Body rotation should be negative (right rotated)
+    # Left hand extended should be positive
+    # Elbow angles (left) should be minimized (as straight as possible)
+    score = (orientation["body_rotation"] - orientation["left_hand_position"] + 
+            orientation["elbow_angle_left"])
+    #print(f"frame{i}: {score}")
+    return score
+
+# Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def pose2_criteria(orientation, i):
+    # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
+    body_rotation_score = abs(orientation["body_rotation"])
+
+    # Ensure the entire right arm is on the right side of the body
+    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Ensure the left hand is to the left of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
+
+    # Combine all criteria (can be weighted if necessary)
+    total_score = body_rotation_score + arm_on_right_side_score + left_hand_position_score
+    if total_score < float("inf"):
+        pass
+        #print(f"frame{i}: {total_score}")  # Debugging output
+    return total_score
+  
+
+# finds the best frame according to the pose criteria. 
+# called by find_most_parallel_and_furthest_segment.   
+def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
+    best_frame = None
+    best_score = float("inf")
+    for i, orientation in enumerate(orientations[start_frame:end_frame], start=start_frame):
+        if orientation:
+            score = criteria(orientation, i)
+            if score < best_score:
+                best_score = score
+                best_frame = i
+    return best_frame  
+
+
+# Function to find the best matching frames for each pose
+def find_most_parallel_and_furthest_segment(keypoints1, keypoints2):
+    
+    # Calculate orientations for both videos
+    video1_orientations = calculate_body_orientation(keypoints1)
+    video2_orientations = calculate_body_orientation(keypoints2)
+
+    # Find best frames for Pose 1 in both videos
+    #print("---------vid 1 pose 1---------")
+    video1_pose1_frame = find_best_frame(video1_orientations, pose1_criteria)
+    #print("---------vid 2 pose 1---------")
+    video2_pose1_frame = find_best_frame(video2_orientations, pose1_criteria)
+
+    # Pose 2 is only evaluated after Pose 1 is found, and it should start after Pose 1 frame
+    if video1_pose1_frame is not None and video2_pose1_frame is not None:
+        #print("---------vid 1 pose 2---------")
+        video1_pose2_frame = find_best_frame(video1_orientations, pose2_criteria, start_frame=video1_pose1_frame + 1)
+        #print("---------vid 2 pose 2---------")
+        video2_pose2_frame = find_best_frame(video2_orientations, pose2_criteria, start_frame=video2_pose1_frame + 1)
+    else:
+        # If Pose 1 is not found, Pose 2 cannot be evaluated
+        video1_pose2_frame = None
+        video2_pose2_frame = None
+
+    # Print results
+    print(f"Pose 1: (Video 1 frame = {video1_pose1_frame}, Video 2 frame = {video2_pose1_frame})")
+    print(f"Pose 2: (Video 1 frame = {video1_pose2_frame}, Video 2 frame = {video2_pose2_frame})")
+    return (
+        (video1_pose1_frame, video2_pose1_frame),
+        (video1_pose2_frame, video2_pose2_frame)
+    )
+
+# called by sync_video_timings
+def resize_and_pad(frame, target_width, target_height):
+    original_height, original_width = frame.shape[:2]
+    original_aspect_ratio = original_width / original_height
+
+    target_aspect_ratio = target_width / target_height
+
+    if original_aspect_ratio > target_aspect_ratio:
+        new_width = target_width
+        new_height = int(target_width / original_aspect_ratio)
+    else:
+        new_height = target_height
+        new_width = int(target_height * original_aspect_ratio)
+
+    resized_frame = cv2.resize(frame, (new_width, new_height))
+
+    padded_frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+
+    x_offset = (target_width - new_width) // 2
+    y_offset = (target_height - new_height) // 2
+    padded_frame[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_frame
+
+    return padded_frame
+
+# called by sync_video_timings
+def drop_frames_to_match_fps(video_path, target_fps, output_path):
+    """
+    Adjusts the frame rate of a video by dropping frames to match the target FPS.
+    
+    Args:
+        video_path (str): Path to the input video.
+        target_fps (float): Target frames per second.
+        output_path (str): Path to save the output video.
+    """
+    # Open the video file
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise IOError(f"Cannot open video file: {video_path}")
+    
+    # Get input video properties
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    print(f"Original FPS: {original_fps}, Target FPS: {target_fps}, Total Frames: {frame_count}")
+
+    # Validate FPS
+    if target_fps > original_fps:
+        raise ValueError("Target FPS cannot be higher than the original FPS.")
+
+    # Calculate frame skipping interval
+    skip_interval = original_fps / target_fps
+
+    # Initialize VideoWriter
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
+    if not out.isOpened():
+        raise IOError(f"Cannot create output video file: {output_path}")
+
+    frame_idx = 0  # Keep track of current frame index
+    frames_written = 0  # Track the number of frames written
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:  # End of video
+            break
+
+        # Write frames that align with the skip interval
+        if int(frame_idx / skip_interval) == frames_written:
+            out.write(frame)
+            frames_written += 1
+
+        frame_idx += 1
+
+    # Release resources
+    cap.release()
+    out.release()
+    print(f"Video processed successfully and saved to {output_path}")
+    
+    
+ 
+ 
+ # Function to extract keypoints and reference scale from a video
+ # called by sync_video_timings
+def extract_keypoints_and_scale(video_path):
+    cap = cv2.VideoCapture(video_path)
+    keypoints = []
+    scales = []
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        # Convert the frame to RGB
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Process the frame with MediaPipe
+        result = pose.process(rgb_frame)
+        if result.pose_landmarks:
+            # Extract keypoints
+            landmarks = result.pose_landmarks.landmark
+            keypoints.append([(lm.x, lm.y) for lm in landmarks])
+
+            # Calculate reference scale using shoulders and hips
+            left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
+            right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
+            left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
+            right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
+
+            shoulder_distance = np.sqrt((left_shoulder.x - right_shoulder.x) ** 2 +
+                                        (left_shoulder.y - right_shoulder.y) ** 2)
+            hip_distance = np.sqrt((left_hip.x - right_hip.x) ** 2 +
+                                   (left_hip.y - right_hip.y) ** 2)
+
+            # Use the average of shoulder and hip distances
+            average_scale = (shoulder_distance + hip_distance) / 2
+            scales.append(average_scale)
+        else:
+            keypoints.append(None)
+            scales.append(None)
+
+    cap.release()
+    return keypoints, scales   
+    
+    
+
+
+# Function to align keypoints by scaling and translating
+# called by sync_video_timings
+def align_keypoints(keypoints, scale, target_scale, target_center):
+    if keypoints is None:
+        return None
+
+    # Calculate the centroid of the keypoints
+    centroid = np.mean(keypoints, axis=0)
+
+    # Scale and translate keypoints
+    aligned_keypoints = [
+        ((x - centroid[0]) * target_scale / scale + target_center[0],
+         (y - centroid[1]) * target_scale / scale + target_center[1])
+        for x, y in keypoints
+    ]
+    return aligned_keypoints
+
