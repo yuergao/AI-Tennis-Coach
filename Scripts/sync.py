@@ -242,6 +242,10 @@ def calculate_body_orientation(keypoints):
                 rw_x, rw_y = keypoint[16][:2]  # Right wrist
                 le_x, le_y = keypoint[13][:2]  # Left elbow
                 re_x, re_y = keypoint[14][:2]  # Right elbow
+                lk_x, lk_y = keypoint[25][:2]  # Left knee
+                rk_x, rk_y = keypoint[26][:2]  # Right knee
+                la_x, la_y = keypoint[27][:2]  # Left ankle
+                ra_x, ra_y = keypoint[28][:2]  # Right ankle
                 # Calculate shoulder and hip rotation angles
                 shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
                 hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
@@ -274,10 +278,20 @@ def calculate_body_orientation(keypoints):
                     "alignment_score": alignment_score,
                     "left_hand_position": left_hand_position,
                     "rw_x": rw_x,  # x-coordinate of the right wrist
-                    "rs_x":rs_x,
+                    "rs_x": rs_x,
+                    "rw_y": rw_y,
+                    "lw_y": lw_y,
                     "rh_x": rh_x,
-                    "re_x":re_x,
+                    "re_x": re_x,
                     "lw_x": lw_x,
+                    "rs_x": rs_x,
+                    "ls_x": ls_x,
+                    "rs_y": rs_y,
+                    "ls_y": ls_y,
+                    "la_x": la_x,
+                    "ra_x": ra_x,
+                    "la_y": la_y,
+                    "ra_y": ra_y,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })
@@ -298,6 +312,7 @@ Returns:
 """
 # Pose 1 Criteria: Body rotated as far right as possible (body_rotation as negative as possible), left hand extended
 # and left arm as straight as possible (least elbow bend)
+# called by find_best_frame
 def pose1_criteria(orientation, i):
     # Body rotation should be negative (right rotated)
     # Left hand extended should be positive

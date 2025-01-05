@@ -12,12 +12,12 @@ swing_type = 'forehand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 1
+player1_vid_idx = 4
 player1_swing_idx = 1
 
 player2 = 'badosa'
 player2_vid_idx = 1
-player2_swing_idx = 4
+player2_swing_idx = 1
 
 
 # construct based on user inputs
@@ -31,7 +31,7 @@ video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extensi
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
 pipeline1 = True
-pipeline2 = True
+pipeline2 = False
 
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
@@ -55,10 +55,10 @@ if pipeline1:
         clear_output_folder(output_path)
         
         #Extract keypoints from the video
-        keypoints = extract_keypoints_from_video(video_path)
+        keypoints, fps = extract_keypoints_from_video(video_path)
 
         # Detect swing boundaries
-        swing_frames = detect_swing_boundaries(keypoints)
+        swing_frames = detect_swing_boundaries(keypoints, fps)
 
         # Segment swings based on the detected frames
         swing_segments = segment_swings(swing_frames)
@@ -66,7 +66,7 @@ if pipeline1:
         print(f"Detected {len(swing_segments)} swings.")
 
         # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(swing_segments):
+        for idx, (start_frame, end_frame) in enumerate(swing_frames):
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{output_path}/{output_levels[1]}_{swing_type}{idx+1}{extension}"
