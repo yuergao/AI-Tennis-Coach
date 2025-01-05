@@ -39,18 +39,14 @@ def find_matching_frames(orientations, criteria, fps, threshold=float("inf")):
         if orientation:
             score = criteria(orientation, i)
             if score < threshold:  
-                matching_frames.append((i, i+(3 *fps)))
+                matching_frames.append((max(1,i-(1*fps)), i+(2.5 *fps)))
                 last_selected_frame = i  # Update the last selected frame
                 print(i, score)
     return matching_frames
 
 def pose1_criteria(orientation, i):
     """
-    Pose 1 Criteria:
-    - Both hands are on the right side of the body.
-    - Body is rotated to the right side (torso facing right).
-    - Left hand is to the right of the right shoulder.
-    - Left foot is in front of the right foot.
+    Pose 1 Criteria
     
     Parameters:
     - orientation: A dictionary containing body landmarks' x and y coordinates.
@@ -60,25 +56,20 @@ def pose1_criteria(orientation, i):
     - A score where 0 means all conditions are met, and inf means a condition failed.
     """
     
-    # Condition 1: Both hands on the right side of the body
-    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
+    # Condition 1: Right hand is to the right of the right shoulder
+    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["le_x"] > orientation["rs_x"] and orientation["lw_x"] > orientation["rs_x"]
     arm_on_right_side_score = 0 if arm_on_right_side else float("inf")
     
-    # Condition 2: Left hand is to the right of the right shoulder
-    left_hand_right_of_right_shoulder = orientation["lw_x"] > orientation["rs_x"]
+    # Condition 2: Left wirst is in front of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_z"] > orientation["rs_z"]
     left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")
     
-    
-    # Condition 2: Left hand is to the right of the right shoulder
-    left_hand_right_of_right_shoulder = orientation["lw_y"] > orientation["rs_y"]
-    left_hand_position_score1 = 0 if left_hand_right_of_right_shoulder else float("inf")
-    
-    # Condition 3: Body is rotated to the right (left shoulder is farther left than the right shoulder)
-    body_rotated_right = orientation["ls_y"] < orientation["rs_y"]
+    # Condition 3: Body is rotated to the right (left shoulder is in front of the right shoulder)
+    body_rotated_right = orientation["ls_z"] > orientation["rs_z"]
     body_rotation_score = 0 if body_rotated_right else float("inf")
     
     # Condition 5: Left foot is in front of the right foot (smaller y value for the left foot)
-    left_foot_in_front = orientation["la_y"] < orientation["ra_y"]
+    left_foot_in_front = orientation["la_z"] > orientation["ra_z"]
     foot_position_score = 0 if left_foot_in_front else float("inf")
     
     # Condition 7: Right wrist is below the right shoulder
@@ -92,8 +83,7 @@ def pose1_criteria(orientation, i):
         left_hand_position_score +
         body_rotation_score +
         foot_position_score +
-        wrist_below_shoulder_score +
-        left_hand_position_score1
+        wrist_below_shoulder_score 
     )
     return score
 
@@ -109,77 +99,6 @@ def detect_swing_boundaries(keypoints, fps):
     orientations = calculate_body_orientation(keypoints)
     video1_pose1_frame = find_matching_frames(orientations, pose1_criteria, fps)
     # Look for key aspects of tennis swing based on wrist position
-    '''
-    for i, frame_keypoints in enumerate(keypoints):
-        if frame_keypoints is None:
-            continue
-
-        # Get the keypoints for the wrists and hips
-        right_wrist = np.array(frame_keypoints[mp_pose.PoseLandmark.RIGHT_WRIST.value][:2])
-        left_wrist = np.array(frame_keypoints[mp_pose.PoseLandmark.LEFT_WRIST.value][:2])
-        right_hip = np.array(frame_keypoints[mp_pose.PoseLandmark.RIGHT_HIP.value][:2])
-        left_hip = np.array(frame_keypoints[mp_pose.PoseLandmark.LEFT_HIP.value][:2])
-        right_foot = np.array(frame_keypoints[mp_pose.PoseLandmark.RIGHT_FOOT_INDEX.value][:2])
-        left_foot = np.array(frame_keypoints[mp_pose.PoseLandmark.LEFT_FOOT_INDEX.value][:2])
-
-
-
-        # Calculate the hip center
-        hip_center = np.array([(left_hip[0] + right_hip[0]) / 2, (left_hip[1] + right_hip[1]) / 2])
-
-        # Calculate distances from wrists to hip center
-        left_wrist_distance = np.linalg.norm(left_wrist - hip_center)
-        right_wrist_distance = np.linalg.norm(right_wrist - hip_center)
-
-        # Check if both wrists are within the distance threshold
-        wrists_in_front = left_wrist_distance < hip_threshold and right_wrist_distance < hip_threshold
-
-        # Calculate distance between the feet
-        feet_distance = abs(left_foot[0] - right_foot[0])
-        
-        # Check if the feet are wide enough
-        feet_wide = feet_distance > feet_threshold
-        
-
-       # Record the frame if wrists are in front and conditions are met
-        if wrists_in_front and feet_wide:
-            if not wrist_in_front_frames or (i - wrist_in_front_frames[-1] >= prep_ignore_interval):
-                wrist_in_front_frames.append(i)
-                print(f"----------prep position at {i/30:.1f} seconds---------")
-                print(f"{i/fps:.1f} seconds & frame{i}: {left_wrist_distance:.4f},{right_wrist_distance:.4f}/{hip_threshold} hip threshold")
-                print(f"{i/fps:.1f} seconds & frame{i}: {feet_distance} feet distance\n")
-            
-        # Debugging: Print comparison for wrists together
-        #print(f"{i/30:.1f} seconds & frame{i}: {left_wrist_distance:.4f},{right_wrist_distance:.4f}/{hip_threshold} hip threshold")
-        #print(f"{i/30:.1f} seconds & frame{i}: {feet_distance} feet distance\n")
-    '''
-    '''
-     wrists together calculation
-        wrist_threshold=0.05
-        
-        # Check if wrists are together (x-coordinates close to each other)
-        wrists_together = abs(right_wrist[0] - left_wrist[0]) < wrist_threshold
-       
-        
-        # Debugging: Print comparison for wrists together
-        print(f"Second {i/30:.1f}: {abs(right_wrist[0] - left_wrist[0]):.4f}/{wrist_threshold} wrists together threshold")
-        
-        wrist_in_front = wrists_together and wrists_in_front
-        
-        # Detect swing start (when both wrists are in front of the body)
-        if wrist_in_front and not in_swing:
-            in_swing = True
-            start = i
-            print(f"Swing start detected at frame {i} (Both wrists in front of body)")
-
-        # Detect swing end (when both wrists return to in front of the body again)
-        elif wrist_in_front and in_swing:
-            # Swing ends when both wrists are back in front of the body again
-            motions.append((start, i))
-            print(f"Swing end detected at frame {i} (Both wrists returned to front of body)")
-            in_swing = False  # Reset for next swing
-    '''
-
     return video1_pose1_frame
 
 
@@ -218,7 +137,6 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path):
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-
     if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
         if end_frame >= total_frames:
             end_frame = total_frames - 1
@@ -286,6 +204,9 @@ def extract_keypoints_from_video(video_path):
                 # Collect keypoints (only the first two dimensions for position)
                 frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
                 keypoints.append(frame_keypoints)
+            else:
+                keypoints.append([(None, None, None)] * 33)
+                
     
     cap.release()
     return np.array(keypoints), fps

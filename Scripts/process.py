@@ -12,7 +12,7 @@ swing_type = 'forehand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 4
+player1_vid_idx = 5
 player1_swing_idx = 1
 
 player2 = 'badosa'

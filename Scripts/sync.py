@@ -231,21 +231,23 @@ def calculate_angle(p1, p2, p3):
 def calculate_body_orientation(keypoints):
     orientations = []
     for keypoint in keypoints:
-        if keypoint is not None:
+        
+        
+        if keypoint[0][0] is not None or  keypoint[10][2] is not None or keypoint[23][0] is not None:
             try:
-                # Key body points (only x and y coordinates are used for rotation along the y-axis)
-                rs_x, rs_y = keypoint[12][:2]  # Right shoulder
-                ls_x, ls_y = keypoint[11][:2]  # Left shoulder
-                rh_x, rh_y = keypoint[24][:2]  # Right hip
-                lh_x, lh_y = keypoint[23][:2]  # Left hip
-                lw_x, lw_y = keypoint[15][:2]  # Left wrist
-                rw_x, rw_y = keypoint[16][:2]  # Right wrist
-                le_x, le_y = keypoint[13][:2]  # Left elbow
-                re_x, re_y = keypoint[14][:2]  # Right elbow
-                lk_x, lk_y = keypoint[25][:2]  # Left knee
-                rk_x, rk_y = keypoint[26][:2]  # Right knee
-                la_x, la_y = keypoint[27][:2]  # Left ankle
-                ra_x, ra_y = keypoint[28][:2]  # Right ankle
+                # Key body points (x, y, z coordinates are now included)
+                rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
+                ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
+                rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
+                lh_x, lh_y, lh_z = keypoint[23][:3]  # Left hip
+                lw_x, lw_y, lw_z = keypoint[15][:3]  # Left wrist
+                rw_x, rw_y, rw_z = keypoint[16][:3]  # Right wrist
+                le_x, le_y, le_z = keypoint[13][:3]  # Left elbow
+                re_x, re_y, re_z = keypoint[14][:3]  # Right elbow
+                lk_x, lk_y, lk_z = keypoint[25][:3]  # Left knee
+                rk_x, rk_y, rk_z = keypoint[26][:3]  # Right knee
+                la_x, la_y, la_z = keypoint[27][:3]  # Left ankle
+                ra_x, ra_y, ra_z = keypoint[28][:3]  # Right ankle
                 # Calculate shoulder and hip rotation angles
                 shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
                 hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
@@ -292,6 +294,13 @@ def calculate_body_orientation(keypoints):
                     "ra_x": ra_x,
                     "la_y": la_y,
                     "ra_y": ra_y,
+                    "le_x": le_x,
+                    "rs_z": rs_z,
+                    "ls_z": ls_z,
+                    "lw_z": lw_z,
+                    "la_z": la_z,
+                    "ra_z": ra_z,
+                    "rw_z": rw_z,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })
