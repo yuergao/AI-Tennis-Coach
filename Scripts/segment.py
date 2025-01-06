@@ -8,7 +8,7 @@ from sync import(calculate_body_orientation)
 mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
 
-def find_matching_frames(orientations, criteria, fps, threshold=float("inf")):
+def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
     """
         Find all frames that meet the criteria within a specified range, ensuring no
         frames are selected within a cooldown period after a match.
@@ -37,11 +37,60 @@ def find_matching_frames(orientations, criteria, fps, threshold=float("inf")):
             continue
 
         if orientation:
-            score = criteria(orientation, i)
+            score = pose1_criteria(orientation, i)
             if score < threshold:  
-                matching_frames.append((max(1,i-(1*fps)), i+(2.5 *fps)))
+                matching_frames.append((max(0,i - fps), i+(2 *fps)))
                 last_selected_frame = i  # Update the last selected frame
-                print(i, score)
+                #print(f"Frame: {i}, Score: {score}")
+    return matching_frames
+
+def find_matching_frames_backhand(orientations,fps, threshold=float("inf")):
+    """
+        Find all frames that meet the criteria within a specified range, ensuring no
+        frames are selected within a cooldown period after a match.
+
+        Parameters:
+        - orientations: List of pose orientations for each frame.
+        - criteria: Function to compute the score for a given orientation.
+        - threshold: Maximum acceptable score to include the frame (default: infinity).
+        - fps: Frames per second of the video.
+        - cooldown_seconds: Cooldown time in seconds after a match.
+
+        Returns:
+        - matching_frames: List of indices of frames that meet the criteria.
+        - scores: List of scores for each matching frame.
+    """
+    matching_frames = []
+    cooldown_seconds = 2
+    cooldown_frames = int(cooldown_seconds * fps)  # Number of frames to skip during cooldown
+    last_selected_frame = -cooldown_frames  # Initialize to a value before the start
+
+    for i, orientation in enumerate(orientations):
+        # Skip if within cooldown
+        if i < last_selected_frame + cooldown_frames:
+            continue
+
+        if orientation:
+            if pose2_criteria(orientation, i) < threshold:  
+                # Calculate scores for the current frame and the next fps/2 frames
+                scores_window = []
+                for j in range(max(0, i - int(fps / 2)), i):
+                    if orientations[j]:  # Ensure the frame has valid orientation data
+                        shoulder_hip_distance = abs(orientations[j]["rs_y"] - orientations[j]["rh_y"])
+                        wrist_distance = abs(orientations[j]["lw_y"] - orientations[j]["rw_y"]) + abs(orientations[j]["lw_x"] - orientations[j]["rw_x"])
+                        wrist_distance = wrist_distance / shoulder_hip_distance
+                        score = wrist_distance
+                        scores_window.append(score)
+
+                # Calculate the average score for this window of frames
+                if scores_window:
+                    avg_score = np.mean(scores_window)
+                    if avg_score < 0.4:  
+                        print(f"frame: {avg_score}")
+                        matching_frames.append((max(0,i - fps), i+(2 *fps)))
+                        last_selected_frame = i  # Update the last selected frame
+                        #print(f"Frame: {i}, Average Score: {avg_score}")
+    
     return matching_frames
 
 def pose1_criteria(orientation, i):
@@ -85,8 +134,63 @@ def pose1_criteria(orientation, i):
         foot_position_score +
         wrist_below_shoulder_score 
     )
+    
     return score
 
+def pose2_criteria(orientation, i):
+    """
+    Pose 2 Criteria
+    
+    Parameters:
+    - orientation: A dictionary containing body landmarks' x and y coordinates.
+    - i: Current frame index.
+    
+    Returns:
+    - A score where 0 means all conditions are met, and inf means a condition failed.
+    """
+    
+    # Condition 1: both wrists to the left of the left shoulder
+    arm_on_right_side = orientation["rw_x"] < orientation["ls_x"] and orientation["lw_x"] < orientation["ls_x"]
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")
+    
+    # Condition 2: Left wirst behind the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_z"] < orientation["rs_z"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")
+    
+    # Condition 3: Body is rotated to the left (right shoulder is in front of the left shoulder)
+    body_rotated_right = orientation["ls_z"] < orientation["rs_z"]
+    body_rotation_score = 0 if body_rotated_right else float("inf")
+    
+    # Condition 5: Right foot is in front of the left foot (smaller y value for the left foot)
+    left_foot_in_front = orientation["la_z"] < orientation["ra_z"]
+    foot_position_score = 0 if left_foot_in_front else float("inf")
+    
+    # Condition 7: Right wrist is below the right shoulder
+    right_wrist_below_shoulder = orientation["rw_y"] > orientation["rs_y"]
+    wrist_below_shoulder_score = 0 if right_wrist_below_shoulder else float("inf")
+    
+    left_elbow_angle = orientation["elbow_angle_left"] > 130 and orientation["elbow_angle_right"] > 130
+    left_elbow_angle_score = orientation["elbow_angle_left"] if left_elbow_angle else float("inf")
+    #print(orientation["elbow_angle_left"], orientation["elbow_angle_right"])
+    
+    wrist_together = orientation["wrist_distance"]
+    wrist_together_score = orientation["wrist_distance"] if orientation["wrist_distance"] < 0.4 else float("inf")
+    # Total score (0 means all conditions met, inf means at least one condition failed)
+    score = (
+        arm_on_right_side_score +
+        left_hand_position_score +
+        body_rotation_score +
+        foot_position_score + 
+        wrist_below_shoulder_score + 
+        left_elbow_angle_score + 
+        wrist_together_score
+    )
+    
+    if score < float("inf"):
+        pass
+        #print(orientation["elbow_angle_left"], orientation["elbow_angle_right"])
+        #print(f"frame: {i}, wrist together: {wrist_together}")
+    return score
 
 # called by driver
 # function to detect start and end indices of tennis swings based on wrist position.
@@ -97,9 +201,11 @@ def detect_swing_boundaries(keypoints, fps):
     feet_threshold = 0.08
 
     orientations = calculate_body_orientation(keypoints)
-    video1_pose1_frame = find_matching_frames(orientations, pose1_criteria, fps)
+    forehand_frames = find_matching_frames_forehand(orientations,fps)
+    backhand_frames = find_matching_frames_backhand(orientations,fps)
+    
     # Look for key aspects of tennis swing based on wrist position
-    return video1_pose1_frame
+    return [forehand_frames, backhand_frames]
 
 
 """

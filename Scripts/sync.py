@@ -209,21 +209,35 @@ def draw_overlay(frame, keypoints1, keypoints2, color1=(0, 255, 0), color2=(0, 0
 
     return frame
 
-# Function to calculate the angle between three points (p1, p2, p3) using the law of cosines
-# called by calculate_body_orientation
-def calculate_angle(p1, p2, p3):
-    # Calculate the vector from p2 to p1 and from p2 to p3
-    v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
-    v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
-    
-    # Calculate the dot product and the magnitudes of the vectors
+def calculate_angle(shoulder, elbow, wrist):
+    """
+    Calculate the counterclockwise angle of the elbow bend formed by the shoulder, elbow, and wrist in 2D.
+
+    Parameters:
+    - shoulder: (x, y) coordinates of the shoulder.
+    - elbow: (x, y) coordinates of the elbow.
+    - wrist: (x, y) coordinates of the wrist.
+
+    Returns:
+    - The angle in degrees (0° to 180°, always counterclockwise).
+    """
+    # Compute vectors
+    v1 = np.array([shoulder[0] - elbow[0], shoulder[1] - elbow[1]])  # Shoulder to elbow
+    v2 = np.array([wrist[0] - elbow[0], wrist[1] - elbow[1]])        # Wrist to elbow
+
+    # Dot product and magnitudes
     dot_product = np.dot(v1, v2)
     magnitude_v1 = np.linalg.norm(v1)
     magnitude_v2 = np.linalg.norm(v2)
-    
-    # Calculate the angle in radians and convert it to degrees
-    angle = np.arccos(dot_product / (magnitude_v1 * magnitude_v2))
-    return np.degrees(angle)
+
+    if magnitude_v1 == 0 or magnitude_v2 == 0:
+        return 0.0  # Avoid division by zero
+
+    # Angle calculation using dot product
+    angle_radians = np.arccos(np.clip(dot_product / (magnitude_v1 * magnitude_v2), -1.0, 1.0))
+    angle_degrees = np.degrees(angle_radians)
+
+    return angle_degrees
 
 
 # Function to calculate body orientation and distances for each frame
@@ -270,10 +284,15 @@ def calculate_body_orientation(keypoints):
                 left_hand_position = lw_x - rs_x
 
                 # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
-                elbow_angle_left = calculate_angle([ls_x, ls_y], [le_x, le_y], [lw_x, lw_y])
+                elbow_angle_left = calculate_angle([ls_x, ls_y, ls_z], [le_x, le_y, le_z], [lw_x, lw_y, lw_z])
 
                 # Calculate the angle between right shoulder, right elbow, and right wrist (to check for elbow bend)
                 elbow_angle_right = calculate_angle([rs_x, rs_y], [re_x, re_y], [rw_x, rw_y])
+
+                # Calculate left hand and right wrist distances
+                shoulder_hip_distance = abs(rs_y - rh_y)
+                wrist_distance = abs(lw_y - rw_y) + abs(lw_x - rw_x)
+                wrist_distance = wrist_distance / shoulder_hip_distance
 
                 orientations.append({
                     "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
@@ -301,6 +320,10 @@ def calculate_body_orientation(keypoints):
                     "la_z": la_z,
                     "ra_z": ra_z,
                     "rw_z": rw_z,
+                    "le_x": le_x,
+                    "lh_x": lh_x,
+                    "rh_y": rh_y,
+                    "wrist_distance": wrist_distance,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })

@@ -8,11 +8,11 @@ from sync import *
 '''
 # User inputs
 # TODO: make into classes
-swing_type = 'forehand'
+swing_type = 'backhand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 5
+player1_vid_idx = 4
 player1_swing_idx = 1
 
 player2 = 'badosa'
@@ -50,29 +50,38 @@ if pipeline1:
     for video_path in video_paths:
         output_levels = video_path.split('/')
         output_folder = f"{output_levels[0]}/{output_levels[1]}"   
-        output_path = f"{output_folder}/{swing_type}"
+        forehand_path = f"{output_folder}/forehand"
+        backhand_path = f"{output_folder}/backhand"
         
-        clear_output_folder(output_path)
+        clear_output_folder(forehand_path)
+        clear_output_folder(backhand_path)
         
         #Extract keypoints from the video
         keypoints, fps = extract_keypoints_from_video(video_path)
 
         # Detect swing boundaries
-        swing_frames = detect_swing_boundaries(keypoints, fps)
+        forehand_frames, backhand_frames = detect_swing_boundaries(keypoints, fps)
 
         # Segment swings based on the detected frames
-        swing_segments = segment_swings(swing_frames)
+        forehand_segments = segment_swings(forehand_frames)
+        backhand_segments = segment_swings(backhand_frames)
 
-        print(f"Detected {len(swing_segments)} swings.")
+        print(f"Detected {len(forehand_segments)} forehands and {len(backhand_frames)} backhands.")
 
         # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(swing_frames):
+        for idx, (start_frame, end_frame) in enumerate(forehand_segments):
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
-                output_video = f"{output_path}/{output_levels[1]}_{swing_type}{idx+1}{extension}"
+                output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
                 extract_motion_segment(video_path, start_frame, end_frame, output_video)
 
-
+        # Process each swing and extract video segments
+        for idx, (start_frame, end_frame) in enumerate(backhand_segments):
+            if start_frame >= 0 and end_frame > start_frame:
+                #find previous directory
+                output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
+                extract_motion_segment(video_path, start_frame, end_frame, output_video)
+                
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
