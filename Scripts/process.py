@@ -8,16 +8,16 @@ from sync import *
 '''
 # User inputs
 # TODO: make into classes
-swing_type = 'backhand'
+swing_type = 'forehand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 4
-player1_swing_idx = 1
+player1_vid_idx = 3
+player1_swing_idx = 2
 
-player2 = 'badosa'
+player2 = 'sabalenka'
 player2_vid_idx = 1
-player2_swing_idx = 1
+player2_swing_idx = 5
 
 
 # construct based on user inputs
@@ -30,8 +30,8 @@ player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
-pipeline1 = True
-pipeline2 = False
+pipeline1 = False
+pipeline2 = True
 
 '''
 -----------------------------------------------------------------------------------------------------------------------------------

@@ -3,10 +3,104 @@ import numpy as np
 from mediapipe import solutions as mp_solutions
 import cv2
 import shutil
-from sync import(calculate_body_orientation)
+from sync import (calculate_angle)
+import mediapipe as mp
 
 mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
+# Function to calculate body orientation and distances for each frame
+# called by find_most_parallel_and_furthest_segment
+def calculate_body_orientation(keypoints):
+    orientations = []
+    for keypoint in keypoints:
+        
+        
+        if keypoint[0][0] is not None or  keypoint[10][2] is not None or keypoint[23][0] is not None:
+            try:
+                # Key body points (x, y, z coordinates are now included)
+                rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
+                ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
+                rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
+                lh_x, lh_y, lh_z = keypoint[23][:3]  # Left hip
+                lw_x, lw_y, lw_z = keypoint[15][:3]  # Left wrist
+                rw_x, rw_y, rw_z = keypoint[16][:3]  # Right wrist
+                le_x, le_y, le_z = keypoint[13][:3]  # Left elbow
+                re_x, re_y, re_z = keypoint[14][:3]  # Right elbow
+                lk_x, lk_y, lk_z = keypoint[25][:3]  # Left knee
+                rk_x, rk_y, rk_z = keypoint[26][:3]  # Right knee
+                la_x, la_y, la_z = keypoint[27][:3]  # Left ankle
+                ra_x, ra_y, ra_z = keypoint[28][:3]  # Right ankle
+                # Calculate shoulder and hip rotation angles
+                shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
+                hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
+
+                # Convert to degrees for easier interpretation
+                shoulder_rotation_deg = np.degrees(shoulder_rotation)
+                hip_rotation_deg = np.degrees(hip_rotation)
+
+                # Normalize angles: forward-facing body as 0 degrees
+                shoulder_rotation_deg_normalized = shoulder_rotation_deg + 90
+                hip_rotation_deg_normalized = hip_rotation_deg + 90
+
+                # Average shoulder and hip rotation for body rotation
+                body_rotation = (shoulder_rotation_deg_normalized + hip_rotation_deg_normalized) / 2
+
+                # Calculate alignment score (based on alignment of shoulders and hips along the y-axis)
+                alignment_score = abs(rs_y - ls_y) + abs(rh_y - lh_y)
+
+                # Calculate left hand and right wrist distances
+                left_hand_position = lw_x - rs_x
+
+                # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
+                elbow_angle_left = calculate_angle([ls_x, ls_y, ls_z], [le_x, le_y, le_z], [lw_x, lw_y, lw_z])
+
+                # Calculate the angle between right shoulder, right elbow, and right wrist (to check for elbow bend)
+                elbow_angle_right = calculate_angle([rs_x, rs_y], [re_x, re_y], [rw_x, rw_y])
+
+                # Calculate left hand and right wrist distances
+                shoulder_hip_distance = abs(rs_y - rh_y)
+                wrist_distance = abs(lw_y - rw_y) + abs(lw_x - rw_x)
+                wrist_distance = wrist_distance / shoulder_hip_distance
+
+                orientations.append({
+                    "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
+                    "alignment_score": alignment_score,
+                    "left_hand_position": left_hand_position,
+                    "rw_x": rw_x,  # x-coordinate of the right wrist
+                    "rs_x": rs_x,
+                    "rw_y": rw_y,
+                    "lw_y": lw_y,
+                    "rh_x": rh_x,
+                    "re_x": re_x,
+                    "lw_x": lw_x,
+                    "rs_x": rs_x,
+                    "ls_x": ls_x,
+                    "rs_y": rs_y,
+                    "ls_y": ls_y,
+                    "la_x": la_x,
+                    "ra_x": ra_x,
+                    "la_y": la_y,
+                    "ra_y": ra_y,
+                    "le_x": le_x,
+                    "rs_z": rs_z,
+                    "ls_z": ls_z,
+                    "lw_z": lw_z,
+                    "la_z": la_z,
+                    "ra_z": ra_z,
+                    "rw_z": rw_z,
+                    "le_x": le_x,
+                    "lh_x": lh_x,
+                    "rh_y": rh_y,
+                    "wrist_distance": wrist_distance,
+                    "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
+                    "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
+                })
+            except Exception as e:
+                orientations.append(None)
+        else:
+            orientations.append(None)
+    return orientations
+
 
 def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
     """
@@ -74,7 +168,7 @@ def find_matching_frames_backhand(orientations,fps, threshold=float("inf")):
             if pose2_criteria(orientation, i) < threshold:  
                 # Calculate scores for the current frame and the next fps/2 frames
                 scores_window = []
-                for j in range(max(0, i - int(fps / 2)), i):
+                for j in range(max(0, i - int(fps / 2)), i): 
                     if orientations[j]:  # Ensure the frame has valid orientation data
                         shoulder_hip_distance = abs(orientations[j]["rs_y"] - orientations[j]["rh_y"])
                         wrist_distance = abs(orientations[j]["lw_y"] - orientations[j]["rw_y"]) + abs(orientations[j]["lw_x"] - orientations[j]["rw_x"])
@@ -85,7 +179,7 @@ def find_matching_frames_backhand(orientations,fps, threshold=float("inf")):
                 # Calculate the average score for this window of frames
                 if scores_window:
                     avg_score = np.mean(scores_window)
-                    if avg_score < 0.4:  
+                    if avg_score < 0.3:  
                         print(f"frame: {avg_score}")
                         matching_frames.append((max(0,i - fps), i+(2 *fps)))
                         last_selected_frame = i  # Update the last selected frame
@@ -227,10 +321,10 @@ def segment_swings(swing_frames):
     swings = [(swing_frames[i][0], swing_frames[i][1]) for i in range(len(swing_frames))]
     return swings
 
-
-# called by driver in pipeline 1
-def extract_motion_segment(video_path, start_frame, end_frame, output_path):
-    """Extract a segment of the video based on frame indices."""
+   
+# called by driver in pipeline 1  
+def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
+    """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -246,7 +340,7 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path):
     if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
         if end_frame >= total_frames:
             end_frame = total_frames - 1
-        else:    
+        else:
             print(f"Invalid frame range: start_frame={start_frame}, end_frame={end_frame}, total_frames={total_frames}")
             return
 
@@ -258,19 +352,44 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path):
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     frame_idx = start_frame
-    print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame-start_frame)/fps, 1)} seconds long")
-    
+    print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
+
+    # Initialize MediaPipe Pose if pose drawing is enabled
+    if draw_pose:
+        mp_pose = mp.solutions.pose
+        pose = mp_pose.Pose()
+        mp_drawing = mp.solutions.drawing_utils
+
     while frame_idx <= end_frame:
         ret, frame = cap.read()
         if not ret:
             print(f"Frame {frame_idx} could not be read, ending extraction.")
             break
+
+        if draw_pose:
+            # Convert the frame to RGB for MediaPipe processing
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = pose.process(rgb_frame)
+
+            # Draw pose landmarks on the frame
+            if results.pose_landmarks:
+                mp_drawing.draw_landmarks(
+                    frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=4, circle_radius=3),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(0, 0, 255), thickness=4, circle_radius=3),  # Red lines
+                )
+
+        # Write the frame (annotated or original) to the output video
         out.write(frame)
         frame_idx += 1
 
     cap.release()
     out.release()
-    print(f"Segment saved to {output_path}")
+    if draw_pose:
+        pose.close()
+    print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
 
 
 # function to clear folder 

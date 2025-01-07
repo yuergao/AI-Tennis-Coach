@@ -51,17 +51,17 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
     # find output video ratio based on usesr video input orientation (vid1)
     vid1_width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
     vid1_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    vid2_width = int(cap2.get(cv2.CAP_PROP_FRAME_WIDTH))
+    vid2_height = int(cap2.get(cv2.CAP_PROP_FRAME_HEIGHT))
     
-    if vid1_height > vid1_width:
-        target_width = 720
-        target_height = 1280
-        output_video_width = target_width * 2
-        output_video_height = target_height
-    else:
+    if vid1_width < vid1_height:
+        target_width = vid1_width
+        target_height = vid1_width
+    else:    
         target_width = 1920
         target_height = 1080
-        output_video_width = target_width
-        output_video_height = target_height * 2
+    output_video_width = target_width 
+    output_video_height = target_height + vid2_height
 
     # extract keypoints with scales in mind
     keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
@@ -155,15 +155,17 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
                 overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
 
                 overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
-                padded_frame1 = resize_and_pad(frame1, target_width, target_height)
-                padded_frame2 = resize_and_pad(frame2, target_width, target_height)
+                if vid1_width <= vid1_height:
+                    padded_frame1 = crop_to_square(frame1)
+                    padded_frame2 = adjust_frame_to_target(frame2, target_width, vid2_height)
+                else:
+                    padded_frame1 = adjust_frame_to_target(frame1, target_width, target_height)
+                    padded_frame2 = adjust_frame_to_target(frame2, target_width, target_height)
 
                 # combine videos based on video input orientation
                 # TODO: auto use verticle or horizontal vid2 according to vid1 orientation
-                if vid1_height > vid1_width:
-                    combined_frame = np.hstack([padded_frame1, padded_frame2])
-                else:
-                    combined_frame = np.vstack([padded_frame1, padded_frame2])
+
+                combined_frame = np.vstack([padded_frame1, padded_frame2])
 
                 out1.write(overlay_frame)
                 out2.write(combined_frame)
@@ -180,6 +182,23 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
     print(f"overlay video saved to {overlay_path}")
     print(f"comparison video saved to {comaprison_path}")
     
+def crop_to_square(frame):
+    """Crops the frame to a square, centered on the middle of the frame."""
+    original_height, original_width = frame.shape[:2]
+
+    # Calculate the side length for the square crop
+    side_length = min(original_width, original_height)
+
+    # Calculate starting points to crop the center
+    crop_x_start = (original_width - side_length) // 2
+    crop_x_end = crop_x_start + side_length
+    crop_y_start = (original_height - side_length) // 2
+    crop_y_end = crop_y_start + side_length
+
+    # Crop the frame to the square
+    cropped_frame = frame[crop_y_start:crop_y_end, crop_x_start:crop_x_end]
+
+    return cropped_frame
     
 # Function to overlay keypoints onto a blank frame. 
 # called by sync_video_timings
@@ -245,85 +264,45 @@ def calculate_angle(shoulder, elbow, wrist):
 def calculate_body_orientation(keypoints):
     orientations = []
     for keypoint in keypoints:
-        
-        
-        if keypoint[0][0] is not None or  keypoint[10][2] is not None or keypoint[23][0] is not None:
+        if keypoint is not None:
             try:
-                # Key body points (x, y, z coordinates are now included)
-                rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
-                ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
-                rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
-                lh_x, lh_y, lh_z = keypoint[23][:3]  # Left hip
-                lw_x, lw_y, lw_z = keypoint[15][:3]  # Left wrist
-                rw_x, rw_y, rw_z = keypoint[16][:3]  # Right wrist
-                le_x, le_y, le_z = keypoint[13][:3]  # Left elbow
-                re_x, re_y, re_z = keypoint[14][:3]  # Right elbow
-                lk_x, lk_y, lk_z = keypoint[25][:3]  # Left knee
-                rk_x, rk_y, rk_z = keypoint[26][:3]  # Right knee
-                la_x, la_y, la_z = keypoint[27][:3]  # Left ankle
-                ra_x, ra_y, ra_z = keypoint[28][:3]  # Right ankle
+                # Key body points (only x and y coordinates are used for rotation along the y-axis)
+                rs_x, rs_y = keypoint[12][:2]  # Right shoulder
+                ls_x, ls_y = keypoint[11][:2]  # Left shoulder
+                rh_x, rh_y = keypoint[24][:2]  # Right hip
+                lh_x, lh_y = keypoint[23][:2]  # Left hip
+                lw_x, lw_y = keypoint[15][:2]  # Left wrist
+                rw_x, rw_y = keypoint[16][:2]  # Right wrist
+                le_x, le_y = keypoint[13][:2]  # Left elbow
+                re_x, re_y = keypoint[14][:2]  # Right elbow
                 # Calculate shoulder and hip rotation angles
                 shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
                 hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
-
                 # Convert to degrees for easier interpretation
                 shoulder_rotation_deg = np.degrees(shoulder_rotation)
                 hip_rotation_deg = np.degrees(hip_rotation)
-
                 # Normalize angles: forward-facing body as 0 degrees
                 shoulder_rotation_deg_normalized = shoulder_rotation_deg + 90
                 hip_rotation_deg_normalized = hip_rotation_deg + 90
-
                 # Average shoulder and hip rotation for body rotation
                 body_rotation = (shoulder_rotation_deg_normalized + hip_rotation_deg_normalized) / 2
-
                 # Calculate alignment score (based on alignment of shoulders and hips along the y-axis)
                 alignment_score = abs(rs_y - ls_y) + abs(rh_y - lh_y)
-
                 # Calculate left hand and right wrist distances
                 left_hand_position = lw_x - rs_x
-
                 # Calculate the angle between left shoulder, left elbow, and left wrist (to check for elbow bend)
-                elbow_angle_left = calculate_angle([ls_x, ls_y, ls_z], [le_x, le_y, le_z], [lw_x, lw_y, lw_z])
-
+                elbow_angle_left = calculate_angle([ls_x, ls_y], [le_x, le_y], [lw_x, lw_y])
                 # Calculate the angle between right shoulder, right elbow, and right wrist (to check for elbow bend)
                 elbow_angle_right = calculate_angle([rs_x, rs_y], [re_x, re_y], [rw_x, rw_y])
-
-                # Calculate left hand and right wrist distances
-                shoulder_hip_distance = abs(rs_y - rh_y)
-                wrist_distance = abs(lw_y - rw_y) + abs(lw_x - rw_x)
-                wrist_distance = wrist_distance / shoulder_hip_distance
-
                 orientations.append({
                     "body_rotation": np.degrees(body_rotation),  # Rotation around the y-axis in degrees
                     "alignment_score": alignment_score,
                     "left_hand_position": left_hand_position,
                     "rw_x": rw_x,  # x-coordinate of the right wrist
-                    "rs_x": rs_x,
-                    "rw_y": rw_y,
-                    "lw_y": lw_y,
+                    "rs_x":rs_x,
                     "rh_x": rh_x,
-                    "re_x": re_x,
+                    "re_x":re_x,
                     "lw_x": lw_x,
-                    "rs_x": rs_x,
-                    "ls_x": ls_x,
-                    "rs_y": rs_y,
-                    "ls_y": ls_y,
-                    "la_x": la_x,
-                    "ra_x": ra_x,
-                    "la_y": la_y,
-                    "ra_y": ra_y,
-                    "le_x": le_x,
-                    "rs_z": rs_z,
-                    "ls_z": ls_z,
-                    "lw_z": lw_z,
-                    "la_z": la_z,
-                    "ra_z": ra_z,
-                    "rw_z": rw_z,
-                    "le_x": le_x,
-                    "lh_x": lh_x,
-                    "rh_y": rh_y,
-                    "wrist_distance": wrist_distance,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })
@@ -332,7 +311,6 @@ def calculate_body_orientation(keypoints):
         else:
             orientations.append(None)
     return orientations
-
 
 """
 Criterias for evaluating pose1 and pose2
@@ -503,7 +481,42 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path):
     
     
  
- 
+def adjust_frame_to_target(frame, target_width, target_height):
+    """
+    Adjust a frame to match a target width and height by cropping if larger or padding if smaller.
+    
+    Parameters:
+        frame (np.ndarray): The input frame (image).
+        target_width (int): The target width.
+        target_height (int): The target height.
+    
+    Returns:
+        np.ndarray: The adjusted frame.
+    """
+    original_height, original_width = frame.shape[:2]
+
+    # Crop if the frame is larger than the target
+    if original_width > target_width:
+        crop_x_start = (original_width - target_width) // 2
+        crop_x_end = crop_x_start + target_width
+        frame = frame[:, crop_x_start:crop_x_end]
+    elif original_width < target_width:  # Pad if the frame is smaller than the target
+        padding_left = (target_width - original_width) // 2
+        padding_right = target_width - original_width - padding_left
+        frame = cv2.copyMakeBorder(frame, 0, 0, padding_left, padding_right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+
+    if original_height > target_height:
+        crop_y_start = (original_height - target_height) // 2
+        crop_y_end = crop_y_start + target_height
+        frame = frame[crop_y_start:crop_y_end, :]
+    elif original_height < target_height:  # Pad if the frame is smaller than the target
+        padding_top = (target_height - original_height) // 2
+        padding_bottom = target_height - original_height - padding_top
+        frame = cv2.copyMakeBorder(frame, padding_top, padding_bottom, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+
+    return frame
+
+
  # Function to extract keypoints and reference scale from a video
  # called by sync_video_timings
 def extract_keypoints_and_scale(video_path):
@@ -524,7 +537,7 @@ def extract_keypoints_and_scale(video_path):
         if result.pose_landmarks:
             # Extract keypoints
             landmarks = result.pose_landmarks.landmark
-            keypoints.append([(lm.x, lm.y) for lm in landmarks])
+            keypoints.append([(lm.x, lm.y, lm.z) for lm in landmarks])
 
             # Calculate reference scale using shoulders and hips
             left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
@@ -563,7 +576,7 @@ def align_keypoints(keypoints, scale, target_scale, target_center):
     aligned_keypoints = [
         ((x - centroid[0]) * target_scale / scale + target_center[0],
          (y - centroid[1]) * target_scale / scale + target_center[1])
-        for x, y in keypoints
+        for x, y, z in keypoints
     ]
     return aligned_keypoints
 
