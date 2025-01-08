@@ -131,7 +131,7 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
             continue
 
         if orientation:
-            score = pose1_criteria(orientation, i)
+            score = forehand_criteria(orientation, i)
             if score < threshold:  
                 matching_frames.append((max(0,i - fps), i+(2 *fps)))
                 last_selected_frame = i  # Update the last selected frame
@@ -165,7 +165,7 @@ def find_matching_frames_backhand(orientations,fps, threshold=float("inf")):
             continue
 
         if orientation:
-            if pose2_criteria(orientation, i) < threshold:  
+            if backhand_criteria(orientation, i) < threshold:  
                 # Calculate scores for the current frame and the next fps/2 frames
                 scores_window = []
                 for j in range(max(0, i - int(fps / 2)), i): 
@@ -187,7 +187,7 @@ def find_matching_frames_backhand(orientations,fps, threshold=float("inf")):
     
     return matching_frames
 
-def pose1_criteria(orientation, i):
+def forehand_criteria(orientation, i):
     """
     Pose 1 Criteria
     
@@ -231,7 +231,7 @@ def pose1_criteria(orientation, i):
     
     return score
 
-def pose2_criteria(orientation, i):
+def backhand_criteria(orientation, i):
     """
     Pose 2 Criteria
     

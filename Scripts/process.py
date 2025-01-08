@@ -8,16 +8,16 @@ from sync import *
 '''
 # User inputs
 # TODO: make into classes
-swing_type = 'forehand'
+swing_type = 'backhand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 3
+player1_vid_idx = 4
 player1_swing_idx = 2
 
-player2 = 'sabalenka'
+player2 = 'rybakina'
 player2_vid_idx = 1
-player2_swing_idx = 5
+player2_swing_idx = 2
 
 
 # construct based on user inputs
@@ -98,5 +98,5 @@ if pipeline2:
     comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
 
     # Call the function to sync the timing and overlay the videos
-    sync_video_timings(video1_path, video2_path, overlay_path, comparison_path)
+    sync_video_timings(video1_path, video2_path, overlay_path, comparison_path, swing_type)
 

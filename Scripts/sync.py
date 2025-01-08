@@ -7,7 +7,7 @@ mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
 
 # Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
-def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):  
+def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type):  
     
     # create directories if don't already exist
     os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
@@ -28,7 +28,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
     
     if fps1 > fps2:
         paths  = video1_path.split('/')
-        newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{min_fps}_fps.mp4'
+        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
         if os.path.exists(newpath) and os.path.isfile(newpath):
             print(f"dropped frame video exists at {min_fps}")
         else:
@@ -39,7 +39,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
         
     elif fps1 < fps2:
         paths  = video2_path.split('/')
-        newpath = f'{paths[0]}/{paths[1]}/{paths[1]}_{min_fps}_fps.mp4'
+        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
         if os.path.exists(newpath) and os.path.isfile(newpath):
             print(f"dropped frame video exists at {min_fps}")
         else:
@@ -58,8 +58,8 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
         target_width = vid1_width
         target_height = vid1_width
     else:    
-        target_width = 1920
-        target_height = 1080
+        target_width = max(vid1_width, vid2_width)
+        target_height = max(vid1_height, vid2_height)
     output_video_width = target_width 
     output_video_height = target_height + vid2_height
 
@@ -88,7 +88,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path):
     out2 = cv2.VideoWriter(comaprison_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
     
     # use body metrics to calculate time offset and sync player swings
-    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2)
+    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2, swing_type)
     vid1_start_sync = frame_sync_stamps[0][0]
     vid2_start_sync = frame_sync_stamps[0][1]
     vid1_end_sync = frame_sync_stamps[1][0]
@@ -267,14 +267,18 @@ def calculate_body_orientation(keypoints):
         if keypoint is not None:
             try:
                 # Key body points (only x and y coordinates are used for rotation along the y-axis)
-                rs_x, rs_y = keypoint[12][:2]  # Right shoulder
-                ls_x, ls_y = keypoint[11][:2]  # Left shoulder
-                rh_x, rh_y = keypoint[24][:2]  # Right hip
-                lh_x, lh_y = keypoint[23][:2]  # Left hip
-                lw_x, lw_y = keypoint[15][:2]  # Left wrist
-                rw_x, rw_y = keypoint[16][:2]  # Right wrist
-                le_x, le_y = keypoint[13][:2]  # Left elbow
-                re_x, re_y = keypoint[14][:2]  # Right elbow
+                rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
+                ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
+                rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
+                lh_x, lh_y, lh_z = keypoint[23][:3]  # Left hip
+                lw_x, lw_y, lw_z = keypoint[15][:3]  # Left wrist
+                rw_x, rw_y, rw_z = keypoint[16][:3]  # Right wrist
+                le_x, le_y, le_z = keypoint[13][:3]  # Left elbow
+                re_x, re_y, re_z = keypoint[14][:3]  # Right elbow
+                lk_x, lk_y, lk_z = keypoint[25][:3]  # Left knee
+                rk_x, rk_y, rk_z = keypoint[26][:3]  # Right knee
+                la_x, la_y, la_z = keypoint[27][:3]  # Left ankle
+                ra_x, ra_y, ra_z = keypoint[28][:3]  # Right ankle
                 # Calculate shoulder and hip rotation angles
                 shoulder_rotation = np.arctan2(ls_x - rs_x, ls_y - rs_y)  # Angle in radians
                 hip_rotation = np.arctan2(lh_x - rh_x, lh_y - rh_y)       # Angle in radians
@@ -299,10 +303,30 @@ def calculate_body_orientation(keypoints):
                     "alignment_score": alignment_score,
                     "left_hand_position": left_hand_position,
                     "rw_x": rw_x,  # x-coordinate of the right wrist
-                    "rs_x":rs_x,
+                    "rs_x": rs_x,
+                    "rw_y": rw_y,
+                    "lw_y": lw_y,
                     "rh_x": rh_x,
-                    "re_x":re_x,
+                    "re_x": re_x,
                     "lw_x": lw_x,
+                    "rs_x": rs_x,
+                    "ls_x": ls_x,
+                    "rs_y": rs_y,
+                    "ls_y": ls_y,
+                    "la_x": la_x,
+                    "ra_x": ra_x,
+                    "la_y": la_y,
+                    "ra_y": ra_y,
+                    "le_x": le_x,
+                    "rs_z": rs_z,
+                    "ls_z": ls_z,
+                    "lw_z": lw_z,
+                    "la_z": la_z,
+                    "ra_z": ra_z,
+                    "rw_z": rw_z,
+                    "le_x": le_x,
+                    "lh_x": lh_x,
+                    "rh_y": rh_y,
                     "elbow_angle_left": elbow_angle_left,  # Angle of the left arm at the elbow
                     "elbow_angle_right": elbow_angle_right  # Angle of the right arm at the elbow
                 })
@@ -323,7 +347,7 @@ Returns:
 # Pose 1 Criteria: Body rotated as far right as possible (body_rotation as negative as possible), left hand extended
 # and left arm as straight as possible (least elbow bend)
 # called by find_best_frame
-def pose1_criteria(orientation, i):
+def forehand_start_criteria(orientation, i):
     # Body rotation should be negative (right rotated)
     # Left hand extended should be positive
     # Elbow angles (left) should be minimized (as straight as possible)
@@ -333,7 +357,7 @@ def pose1_criteria(orientation, i):
     return score
 
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
-def pose2_criteria(orientation, i):
+def forehand_end_criteria(orientation, i):
     # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
     body_rotation_score = abs(orientation["body_rotation"])
 
@@ -352,6 +376,67 @@ def pose2_criteria(orientation, i):
         #print(f"frame{i}: {total_score}")  # Debugging output
     return total_score
   
+# Backhand start Criteria
+# called by find_best_frame
+def backhand_start_criteria(orientation, i):
+    """
+    Pose 2 Criteria
+    
+    Parameters:
+    - orientation: A dictionary containing body landmarks' x and y coordinates.
+    - i: Current frame index.
+    
+    Returns:
+    - A score where 0 means all conditions are met, and inf means a condition failed.
+    """
+    
+    # Condition 1: both wrists to the left of the left shoulder
+    arm_on_right_side = orientation["rw_x"] < orientation["ls_x"] and orientation["lw_x"] < orientation["ls_x"]
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")
+    
+    # Condition 2: Left wirst behind the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_z"] < orientation["rs_z"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")
+    
+    # Condition 3: Body is rotated to the left (right shoulder is in front of the left shoulder)
+    body_rotated_right = orientation["ls_z"] < orientation["rs_z"]
+    body_rotation_score = 0 if body_rotated_right else float("inf")
+    
+    # Condition 5: Right foot is in front of the left foot (smaller y value for the left foot)
+    left_foot_in_front = orientation["la_z"] < orientation["ra_z"]
+    foot_position_score = 0 if left_foot_in_front else float("inf")
+    
+    # Condition 7: Right wrist is below the right shoulder
+    right_wrist_below_shoulder = orientation["rw_y"] > orientation["rs_y"]
+    wrist_below_shoulder_score = 0 if right_wrist_below_shoulder else float("inf")
+    #print(orientation["elbow_angle_left"], orientation["elbow_angle_right"])
+    
+   
+    # Total score (0 means all conditions met, inf means at least one condition failed)
+    score = (
+        arm_on_right_side_score +
+        left_hand_position_score +
+        body_rotation_score +
+        foot_position_score + 
+        wrist_below_shoulder_score 
+    )
+    
+    if score < float("inf"):
+        pass
+        #print(orientation["elbow_angle_left"], orientation["elbow_angle_right"])
+        #print(f"frame: {i}, wrist together: {wrist_together}")
+    return score
+
+# backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def backhand_end_criteria(orientation, i):
+    # Ensure both hands are on the right side of the body
+    both_hands_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
+    both_hands_on_right_side_score = 0 if both_hands_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Combine all criteria (can be weighted if necessary)
+    total_score = both_hands_on_right_side_score
+    
+    return total_score
 
 # finds the best frame according to the pose criteria. 
 # called by find_most_parallel_and_furthest_segment.   
@@ -368,7 +453,7 @@ def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
 
 
 # Function to find the best matching frames for each pose
-def find_most_parallel_and_furthest_segment(keypoints1, keypoints2):
+def find_most_parallel_and_furthest_segment(keypoints1, keypoints2, swing_type):
     
     # Calculate orientations for both videos
     video1_orientations = calculate_body_orientation(keypoints1)
@@ -376,16 +461,27 @@ def find_most_parallel_and_furthest_segment(keypoints1, keypoints2):
 
     # Find best frames for Pose 1 in both videos
     #print("---------vid 1 pose 1---------")
-    video1_pose1_frame = find_best_frame(video1_orientations, pose1_criteria)
-    #print("---------vid 2 pose 1---------")
-    video2_pose1_frame = find_best_frame(video2_orientations, pose1_criteria)
-
+    if swing_type == 'backhand':
+        video1_pose1_frame = find_best_frame(video1_orientations, backhand_start_criteria)
+        #print("---------vid 2 pose 1---------")
+        video2_pose1_frame = find_best_frame(video2_orientations, backhand_start_criteria)
+    else: # assumes only forehand and backhand for now 
+        video1_pose1_frame = find_best_frame(video1_orientations, forehand_start_criteria)
+        #print("---------vid 2 pose 1---------")
+        video2_pose1_frame = find_best_frame(video2_orientations, forehand_start_criteria)
+        
     # Pose 2 is only evaluated after Pose 1 is found, and it should start after Pose 1 frame
     if video1_pose1_frame is not None and video2_pose1_frame is not None:
-        #print("---------vid 1 pose 2---------")
-        video1_pose2_frame = find_best_frame(video1_orientations, pose2_criteria, start_frame=video1_pose1_frame + 1)
-        #print("---------vid 2 pose 2---------")
-        video2_pose2_frame = find_best_frame(video2_orientations, pose2_criteria, start_frame=video2_pose1_frame + 1)
+        if swing_type == "backhand":
+            #print("---------vid 1 pose 2---------")
+            video1_pose2_frame = find_best_frame(video1_orientations, backhand_end_criteria, start_frame=video1_pose1_frame + 1)
+            #print("---------vid 2 pose 2---------")
+            video2_pose2_frame = find_best_frame(video2_orientations, backhand_end_criteria, start_frame=video2_pose1_frame + 1)
+        else: # assumes only forehand and backhand for now 
+            #print("---------vid 1 pose 2---------")
+            video1_pose2_frame = find_best_frame(video1_orientations, forehand_end_criteria, start_frame=video1_pose1_frame + 1)
+            #print("---------vid 2 pose 2---------")
+            video2_pose2_frame = find_best_frame(video2_orientations, forehand_end_criteria, start_frame=video2_pose1_frame + 1)
     else:
         # If Pose 1 is not found, Pose 2 cannot be evaluated
         video1_pose2_frame = None
