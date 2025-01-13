@@ -11,6 +11,29 @@ pose = mp_pose.Pose()
 # Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
 def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type):  
     
+    # extract keypoints with scales in mind
+    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
+    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+
+        # use body metrics to calculate time offset and sync player swings
+    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2, swing_type)
+    vid1_start_sync = frame_sync_stamps[0][0]
+    vid2_start_sync = frame_sync_stamps[0][1]
+    vid1_end_sync = frame_sync_stamps[1][0]
+    vid2_end_sync = frame_sync_stamps[1][1]
+    time_offset = vid2_start_sync - vid1_start_sync # time between first poses - prep
+    vid1_swing_len = vid1_end_sync - vid1_start_sync
+    vid2_swing_len = vid2_end_sync - vid2_start_sync 
+    
+    # switch videos around if vid1 has a shorter swing len than vid2
+    if vid1_swing_len < vid2_swing_len:
+        keypoints1, keypoints2 = keypoints2, keypoints1   
+        scales1, scales2 = scales2, scales1
+        video1_path, video2_path = video2_path, video1_path
+        vid1_start_sync, vid2_start_sync = vid2_start_sync, vid1_start_sync
+        vid1_end_sync, vid2_end_sync = vid2_end_sync, vid1_end_sync
+        vid1_swing_len, vid2_swing_len = vid2_swing_len, vid1_swing_len
+    
     # create directories if don't already exist
     os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
     os.makedirs(os.path.dirname(comaprison_path), exist_ok=True)
@@ -59,16 +82,12 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     if vid1_width < vid1_height:
         target_width = vid1_width
         target_height = vid1_width
+        output_video_height = target_height + vid2_height
     else:    
         target_width = 1920
         target_height = 1080
+        output_video_height = target_height * 2
     output_video_width = target_width 
-    output_video_height = target_height * 2
-
-    # extract keypoints with scales in mind
-    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
-    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
-
     
     # find first valid frame between 2 videos 
     first_valid_frame_idx = None
@@ -430,11 +449,15 @@ def backhand_start_criteria(orientation, i):
 # backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def backhand_end_criteria(orientation, i):
     # Ensure both hands are on the right side of the body
-    both_hands_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
-    both_hands_on_right_side_score = 0 if both_hands_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+    both_hands_on_right_side = orientation["rw_x"] > orientation["ls_x"] and orientation["lw_x"] > orientation["ls_x"]
+    both_hands_on_right_side_score =  0 if both_hands_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
 
+    # Condition 2: Left wirst in front of the right shoulder
+    left_hand_front_of_right_shoulder = orientation["lw_z"] > orientation["rs_z"]
+    left_hand_front_of_right_shoulder_score = 0 if left_hand_front_of_right_shoulder else float("inf")
+    
     # Combine all criteria (can be weighted if necessary)
-    total_score = both_hands_on_right_side_score
+    total_score = both_hands_on_right_side_score + left_hand_front_of_right_shoulder_score
     
     return total_score
 

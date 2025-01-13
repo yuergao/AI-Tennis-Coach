@@ -260,7 +260,7 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                     #if len(scores_window) > fps/2 and avg_score < 0.35:
                         skip = False
                         for forehand_frame in forehand_frames:
-                            if forehand_frame[0] <= i + (2 * fps)and i <= forehand_frame[1]:
+                            if forehand_frame[0] <= i + fps and i <= forehand_frame[1]:
                                 #print(f"skipped frame {i}: {avg_score}")
                                 skip = True
                                 break

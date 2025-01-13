@@ -9,16 +9,16 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 '''
 # User inputs
 # TODO: make into classes
-swing_type = 'forehand'
+swing_type = 'backhand'
 extension = '.mp4'
 
-player1 = 'dad'
+player1 = 'zverev'
 player1_vid_idx = 1
 player1_swing_idx = 1
 
 player2 = 'djokovic'
 player2_vid_idx = 1
-player2_swing_idx = 4
+player2_swing_idx = 2
 
 
 # construct based on user inputs
@@ -31,8 +31,8 @@ player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
-pipeline1 = True
-pipeline2 = False
+pipeline1 = False
+pipeline2 = True
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
