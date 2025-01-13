@@ -2,6 +2,8 @@ import os
 import cv2
 import numpy as np
 from mediapipe import solutions as mp_solutions
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
@@ -29,21 +31,21 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     if fps1 > fps2:
         paths  = video1_path.split('/')
         newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
-        if os.path.exists(newpath) and os.path.isfile(newpath):
-            print(f"dropped frame video exists at {min_fps}")
-        else:
-            drop_frames_to_match_fps(video1_path,min_fps,newpath)
+        #if os.path.exists(newpath) and os.path.isfile(newpath):
+         #   print(f"dropped frame video exists at {min_fps}")
+        #else:
+        drop_frames_to_match_fps(video1_path,min_fps,newpath)
         video1_path = newpath
         cap1 = cv2.VideoCapture(video1_path)
         fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
         
-    elif fps1 < fps2:
+    elif fps1 <= fps2:
         paths  = video2_path.split('/')
         newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
-        if os.path.exists(newpath) and os.path.isfile(newpath):
-            print(f"dropped frame video exists at {min_fps}")
-        else:
-            drop_frames_to_match_fps(video2_path,min_fps,newpath)
+        #if os.path.exists(newpath) and os.path.isfile(newpath):
+           # print(f"dropped frame video exists at {min_fps}")
+        #else:
+        drop_frames_to_match_fps(video2_path,min_fps,newpath)
         video2_path = newpath
         cap2 = cv2.VideoCapture(video2_path)
         fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
@@ -53,15 +55,15 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     vid1_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
     vid2_width = int(cap2.get(cv2.CAP_PROP_FRAME_WIDTH))
     vid2_height = int(cap2.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
+    print(vid1_width,vid1_height,vid2_width,vid2_height)
     if vid1_width < vid1_height:
         target_width = vid1_width
         target_height = vid1_width
     else:    
-        target_width = max(vid1_width, vid2_width)
-        target_height = max(vid1_height, vid2_height)
+        target_width = 1920
+        target_height = 1080
     output_video_width = target_width 
-    output_video_height = target_height + vid2_height
+    output_video_height = target_height * 2
 
     # extract keypoints with scales in mind
     keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
@@ -163,8 +165,6 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
                     padded_frame2 = adjust_frame_to_target(frame2, target_width, target_height)
 
                 # combine videos based on video input orientation
-                # TODO: auto use verticle or horizontal vid2 according to vid1 orientation
-
                 combined_frame = np.vstack([padded_frame1, padded_frame2])
 
                 out1.write(overlay_frame)

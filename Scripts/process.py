@@ -1,6 +1,7 @@
 from segment import *
 from sync import *
-
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 -------------------------------------------- Driver --------------------------------------------------------------------------
@@ -8,16 +9,16 @@ from sync import *
 '''
 # User inputs
 # TODO: make into classes
-swing_type = 'backhand'
+swing_type = 'forehand'
 extension = '.mp4'
 
-player1 = 'audrey'
-player1_vid_idx = 4
-player1_swing_idx = 2
+player1 = 'dad'
+player1_vid_idx = 1
+player1_swing_idx = 1
 
-player2 = 'rybakina'
+player2 = 'djokovic'
 player2_vid_idx = 1
-player2_swing_idx = 2
+player2_swing_idx = 4
 
 
 # construct based on user inputs
@@ -30,16 +31,14 @@ player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
-pipeline1 = False
-pipeline2 = True
-
+pipeline1 = True
+pipeline2 = False
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
 
-# TODO: detect swing types (forehand, backhand) and output into respective folders, for now all forehand
 original_video1_path = f"{player1}/{player1_vid}/{player1_vid}{extension}"
 original_video2_path = f"{player2}/{player2_vid}/{player2_vid}{extension}"
 
@@ -87,7 +86,6 @@ if pipeline1:
 ---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
-# TODO: seperate code into separate files: driver, pipeline1, pipeline2
 
 if pipeline2:
     # output 
