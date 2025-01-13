@@ -3,7 +3,7 @@ import numpy as np
 from mediapipe import solutions as mp_solutions
 import cv2
 import shutil
-from sync import (calculate_angle, find_best_frame)
+from sync import (calculate_angle, find_best_frame, forehand_start_criteria, forehand_end_criteria)
 import mediapipe as mp
 import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
@@ -160,15 +160,46 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
                             #filtered_scores.append(scores_window[k])
 
                     # Calculate the average score for this filtered window
-                if scores_window:
+                if scores_window and len(scores_window) > fps/15:
                     avg_score = np.mean(scores_window)
                     if avg_score < threshold:
-                        matching_frames.append((max(0, i - fps), i + (2 * fps)))
-                        print(f"forehand frame {(max(0, i), i + (2 * fps))}")
-                        last_selected_frame = i  # Update the last selected frame
+                        start_frame = max(0, i - fps)
+                        end_frame = min(i+ int(2*fps),len(orientations) - 1)
+                        start_swing = find_best_frame(orientations[start_frame:end_frame], forehand_start_criteria)
+                        if start_swing is None:
+                            continue
+                        contact_swing = find_best_frame(orientations[start_frame:end_frame], forehand_end_criteria, start_frame= start_swing)
+                        if contact_swing is None:
+                            continue
+                        end_swing = find_best_frame(orientations[start_frame:end_frame], forehand_end_criteria1, start_frame= contact_swing)
+                        if start_swing is not None and end_swing is not None and end_swing - start_swing > 0:
+                            swing_len = end_swing - start_swing
+                            print(f"swing len: {swing_len}")
+                            matching_frames.append((max(0, i - fps), min(i+ int(2*fps),len(orientations) - 1)))
+                            print(f"forehand frame {(max(0, i), i + (2 * fps))}")
+                            last_selected_frame = i  # Update the last selected frame
+
 
 
     return matching_frames
+
+# Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def forehand_end_criteria1(orientation, i):
+
+    # Ensure the entire right arm is on the right side of the body
+    arm_on_right_side = orientation["rw_x"] < orientation["rs_x"] 
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Ensure the left hand is to the left of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
+
+    # Combine all criteria (can be weighted if necessary)
+    total_score = arm_on_right_side_score + left_hand_position_score
+    if total_score < float("inf"):
+        pass
+        #print(f"frame{i}: {total_score}")  # Debugging output
+    return total_score
 
 def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=float("inf")):
     """
