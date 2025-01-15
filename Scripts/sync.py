@@ -7,35 +7,34 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
-
-# Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
-def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type):  
     
-    # extract keypoints with scales in mind
-    keypoints1, scales1 = extract_keypoints_and_scale(video1_path)
-    keypoints2, scales2 = extract_keypoints_and_scale(video2_path)
+# Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
+def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type, keypoints1, scales1, keypoints2, scales2, frame_sync_stamps1, frame_sync_stamps2):  
 
-        # use body metrics to calculate time offset and sync player swings
-    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2, swing_type)
-    vid1_start_sync = frame_sync_stamps[0][0]
-    vid2_start_sync = frame_sync_stamps[0][1]
-    vid1_end_sync = frame_sync_stamps[1][0]
-    vid2_end_sync = frame_sync_stamps[1][1]
+    # use body metrics to calculate time offset and sync player swings
+    vid1_start_sync = frame_sync_stamps1[0]
+    vid1_end_sync = frame_sync_stamps1[1]
+    vid2_start_sync =  frame_sync_stamps2[0]
+    vid2_end_sync =  frame_sync_stamps2[1]
     time_offset = vid2_start_sync - vid1_start_sync # time between first poses - prep
     vid1_swing_len = vid1_end_sync - vid1_start_sync
     vid2_swing_len = vid2_end_sync - vid2_start_sync 
-    
+    print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
+    print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
     # switch videos around if vid1 has a shorter swing len than vid2
     if vid1_swing_len < vid2_swing_len:
+        print("videos switched!")
         keypoints1, keypoints2 = keypoints2, keypoints1   
         scales1, scales2 = scales2, scales1
         video1_path, video2_path = video2_path, video1_path
         vid1_start_sync, vid2_start_sync = vid2_start_sync, vid1_start_sync
         vid1_end_sync, vid2_end_sync = vid2_end_sync, vid1_end_sync
         vid1_swing_len, vid2_swing_len = vid2_swing_len, vid1_swing_len
+        time_offset = vid2_start_sync - vid1_start_sync 
+    
     
     # create directories if don't already exist
-    os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
+    #os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
     os.makedirs(os.path.dirname(comaprison_path), exist_ok=True)
     
     #initialize video capture
@@ -84,9 +83,12 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
         target_height = vid1_width
         output_video_height = target_height + vid2_height
     else:    
-        target_width = 1920
-        target_height = 1080
-        output_video_height = target_height * 2
+        target_width = max(vid1_width, vid2_width)
+        target_height = max(vid1_height, vid2_height)
+        if vid2_width < vid2_height:
+            output_video_height = target_height + vid1_height
+        else:
+            output_video_height = target_height * 2
     output_video_width = target_width 
     
     # find first valid frame between 2 videos 
@@ -105,21 +107,11 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     frame_idx2 = first_valid_frame_idx 
     
     # initialize video writer
-    out1 = cv2.VideoWriter(overlay_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (target_width, target_height))   
+    #out1 = cv2.VideoWriter(overlay_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (target_width, target_height))   
     out2 = cv2.VideoWriter(comaprison_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
     
     # use body metrics to calculate time offset and sync player swings
-    frame_sync_stamps = find_most_parallel_and_furthest_segment(keypoints1,keypoints2, swing_type)
-    vid1_start_sync = frame_sync_stamps[0][0]
-    vid2_start_sync = frame_sync_stamps[0][1]
-    vid1_end_sync = frame_sync_stamps[1][0]
-    vid2_end_sync = frame_sync_stamps[1][1]
-    time_offset = vid2_start_sync - vid1_start_sync # time between first poses - prep
-    vid1_swing_len = vid1_end_sync - vid1_start_sync
-    vid2_swing_len = vid2_end_sync - vid2_start_sync  
     print(f"Time offset: {time_offset} frames")
-    print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
-    print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
     
     # sync video start based on first pose
     if time_offset > 0:
@@ -167,13 +159,13 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
         if frame_idx1 < len(keypoints1) and frame_idx2 < len(keypoints2):
             if keypoints1[frame_idx1] and keypoints2[frame_idx2]:
 
-                fixed_scale1 = scales1[frame_idx1]
-                adjusted_scale2 = scales2[frame_idx2] * scale_ratio
-                aligned_kp1 = align_keypoints(keypoints1[frame_idx1], fixed_scale1, fixed_scale1, target_center=(0.5, 0.5))
-                aligned_kp2 = align_keypoints(keypoints2[frame_idx2], scales2[frame_idx2], adjusted_scale2, target_center=(0.5, 0.5))
+                #fixed_scale1 = scales1[frame_idx1]
+                #adjusted_scale2 = scales2[frame_idx2] * scale_ratio
+                #aligned_kp1 = align_keypoints(keypoints1[frame_idx1], fixed_scale1, fixed_scale1, target_center=(0.5, 0.5))
+                #aligned_kp2 = align_keypoints(keypoints2[frame_idx2], scales2[frame_idx2], adjusted_scale2, target_center=(0.5, 0.5))
 
                 blank_frame = np.zeros_like(frame1)
-                overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
+                #overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
 
                 overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
                 if vid1_width <= vid1_height:
@@ -186,7 +178,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
                 # combine videos based on video input orientation
                 combined_frame = np.vstack([padded_frame1, padded_frame2])
 
-                out1.write(overlay_frame)
+                #out1.write(overlay_frame)
                 out2.write(combined_frame)
 
         frame_idx1 += 1
@@ -195,10 +187,10 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
 
     cap1.release()
     cap2.release()
-    out1.release()
+    #out1.release()
     out2.release()
 
-    print(f"overlay video saved to {overlay_path}")
+    #print(f"overlay video saved to {overlay_path}")
     print(f"comparison video saved to {comaprison_path}")
     
 def crop_to_square(frame):
@@ -476,71 +468,96 @@ def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
 
 
 # Function to find the best matching frames for each pose
-def find_most_parallel_and_furthest_segment(keypoints1, keypoints2, swing_type):
-    
-    # Calculate orientations for both videos
-    video1_orientations = calculate_body_orientation(keypoints1)
-    video2_orientations = calculate_body_orientation(keypoints2)
+def find_most_parallel_and_furthest_segment(keypoints, swing_type):
+    # Calculate orientations
+    video_orientations = calculate_body_orientation(keypoints)
 
-    # Find best frames for Pose 1 in both videos
-    #print("---------vid 1 pose 1---------")
+    # Find the best frame for Pose 1
     if swing_type == 'backhand':
-        video1_pose1_frame = find_best_frame(video1_orientations, backhand_start_criteria)
-        #print("---------vid 2 pose 1---------")
-        video2_pose1_frame = find_best_frame(video2_orientations, backhand_start_criteria)
-    else: # assumes only forehand and backhand for now 
-        video1_pose1_frame = find_best_frame(video1_orientations, forehand_start_criteria)
-        #print("---------vid 2 pose 1---------")
-        video2_pose1_frame = find_best_frame(video2_orientations, forehand_start_criteria)
-        
-    # Pose 2 is only evaluated after Pose 1 is found, and it should start after Pose 1 frame
-    if video1_pose1_frame is not None and video2_pose1_frame is not None:
+        pose1_frame = find_best_frame(video_orientations, backhand_start_criteria)
+    else:  # Assumes only forehand and backhand for now
+        pose1_frame = find_best_frame(video_orientations, forehand_start_criteria)
+
+    # Pose 2 is evaluated only after Pose 1 is found, and it should start after Pose 1 frame
+    if pose1_frame is not None:
         if swing_type == "backhand":
-            #print("---------vid 1 pose 2---------")
-            video1_pose2_frame = find_best_frame(video1_orientations, backhand_end_criteria, start_frame=video1_pose1_frame + 1)
-            #print("---------vid 2 pose 2---------")
-            video2_pose2_frame = find_best_frame(video2_orientations, backhand_end_criteria, start_frame=video2_pose1_frame + 1)
-        else: # assumes only forehand and backhand for now 
-            #print("---------vid 1 pose 2---------")
-            video1_pose2_frame = find_best_frame(video1_orientations, forehand_end_criteria, start_frame=video1_pose1_frame + 1)
-            #print("---------vid 2 pose 2---------")
-            video2_pose2_frame = find_best_frame(video2_orientations, forehand_end_criteria, start_frame=video2_pose1_frame + 1)
+            pose2_frame = find_best_frame(video_orientations, backhand_end_criteria, start_frame=pose1_frame + 1)
+        else:  # Assumes only forehand and backhand for now
+            pose2_frame = find_best_frame(video_orientations, forehand_end_criteria1, start_frame=pose1_frame + 1)
     else:
         # If Pose 1 is not found, Pose 2 cannot be evaluated
-        video1_pose2_frame = None
-        video2_pose2_frame = None
+        pose2_frame = None
 
     # Print results
-    print(f"Pose 1: (Video 1 frame = {video1_pose1_frame}, Video 2 frame = {video2_pose1_frame})")
-    print(f"Pose 2: (Video 1 frame = {video1_pose2_frame}, Video 2 frame = {video2_pose2_frame})")
-    return (
-        (video1_pose1_frame, video2_pose1_frame),
-        (video1_pose2_frame, video2_pose2_frame)
-    )
+    print(f"Pose 1: Frame = {pose1_frame}")
+    print(f"Pose 2: Frame = {pose2_frame}")
 
-# called by sync_video_timings
-def resize_and_pad(frame, target_width, target_height):
+    return (pose1_frame, pose2_frame)
+
+# Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def forehand_end_criteria1(orientation, i):
+
+    # Ensure the entire right arm is on the left side of the right shoulder
+    arm_on_right_side = orientation["rw_x"] < orientation["rs_x"] 
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Ensure the left hand is to the left of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
+
+    # Combine all criteria (can be weighted if necessary)
+    total_score = arm_on_right_side_score + left_hand_position_score
+    if total_score < float("inf"):
+        pass
+        #print(f"frame{i}: {total_score}")  # Debugging output
+    return total_score
+
+def resize_and_pad(frame, target_width, target_height, pad_color=(0, 0, 0)):
+    """
+    Resize the frame to fit within the target dimensions, adding padding or cropping only if necessary.
+
+    Parameters:
+    - frame: Input image (numpy array).
+    - target_width: Target width of the frame.
+    - target_height: Target height of the frame.
+    - pad_color: Color for padding (default: black).
+
+    Returns:
+    - final_frame: The resized and padded/cropped frame with target dimensions.
+    """
     original_height, original_width = frame.shape[:2]
     original_aspect_ratio = original_width / original_height
-
     target_aspect_ratio = target_width / target_height
 
+    # Resize frame to fit within target dimensions
     if original_aspect_ratio > target_aspect_ratio:
+        # Original is wider than target
         new_width = target_width
         new_height = int(target_width / original_aspect_ratio)
     else:
+        # Original is taller or matches the target
         new_height = target_height
         new_width = int(target_height * original_aspect_ratio)
 
-    resized_frame = cv2.resize(frame, (new_width, new_height))
+    # Resize the frame
+    resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
 
-    padded_frame = np.zeros((target_height, target_width, 3), dtype=np.uint8)
+    # Check if padding or cropping is required
+    if new_width < target_width or new_height < target_height:
+        # Create a blank canvas for padding
+        padded_frame = np.full((target_height, target_width, 3), pad_color, dtype=np.uint8)
 
-    x_offset = (target_width - new_width) // 2
-    y_offset = (target_height - new_height) // 2
-    padded_frame[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_frame
-
-    return padded_frame
+        # Center the resized frame on the canvas
+        x_offset = (target_width - new_width) // 2
+        y_offset = (target_height - new_height) // 2
+        padded_frame[y_offset:y_offset + new_height, x_offset:x_offset + new_width] = resized_frame
+        return padded_frame
+    else:
+        # Crop if dimensions exceed target
+        x_start = (new_width - target_width) // 2
+        y_start = (new_height - target_height) // 2
+        cropped_frame = resized_frame[y_start:y_start + target_height, x_start:x_start + target_width]
+        return cropped_frame
 
 # called by sync_video_timings
 def drop_frames_to_match_fps(video_path, target_fps, output_path):
@@ -638,11 +655,12 @@ def adjust_frame_to_target(frame, target_width, target_height):
 
  # Function to extract keypoints and reference scale from a video
  # called by sync_video_timings
-def extract_keypoints_and_scale(video_path):
+def extract_keypoints_scales_and_fps(video_path):
     cap = cv2.VideoCapture(video_path)
     keypoints = []
     scales = []
-
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -677,7 +695,7 @@ def extract_keypoints_and_scale(video_path):
             scales.append(None)
 
     cap.release()
-    return keypoints, scales   
+    return keypoints, scales, fps
     
     
 

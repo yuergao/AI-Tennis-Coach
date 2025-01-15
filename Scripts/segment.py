@@ -186,7 +186,7 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def forehand_end_criteria1(orientation, i):
 
-    # Ensure the entire right arm is on the right side of the body
+    # Ensure the entire right arm is on the left side of the right shoulder
     arm_on_right_side = orientation["rw_x"] < orientation["rs_x"] 
     arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
 
@@ -460,8 +460,8 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
                     frame,
                     results.pose_landmarks,
                     mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=2),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=2),  # Red lines
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
                 )
 
         # Write the frame (annotated or original) to the output video
