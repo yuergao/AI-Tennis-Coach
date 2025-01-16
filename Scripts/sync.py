@@ -9,86 +9,90 @@ mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
     
 # Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
-def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type, keypoints1, scales1, keypoints2, scales2, frame_sync_stamps1, frame_sync_stamps2):  
-
-    # use body metrics to calculate time offset and sync player swings
+def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type, keypoints1, scales1, keypoints2, scales2, frame_sync_stamps1, frame_sync_stamps2, fps1, fps2):  
+    # initialize swing stamps
     vid1_start_sync = frame_sync_stamps1[0]
     vid1_end_sync = frame_sync_stamps1[1]
     vid2_start_sync =  frame_sync_stamps2[0]
     vid2_end_sync =  frame_sync_stamps2[1]
-    time_offset = vid2_start_sync - vid1_start_sync # time between first poses - prep
     vid1_swing_len = vid1_end_sync - vid1_start_sync
     vid2_swing_len = vid2_end_sync - vid2_start_sync 
-    print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
-    print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
-    # switch videos around if vid1 has a shorter swing len than vid2
-    if vid1_swing_len < vid2_swing_len:
-        print("videos switched!")
-        keypoints1, keypoints2 = keypoints2, keypoints1   
-        scales1, scales2 = scales2, scales1
-        video1_path, video2_path = video2_path, video1_path
-        vid1_start_sync, vid2_start_sync = vid2_start_sync, vid1_start_sync
-        vid1_end_sync, vid2_end_sync = vid2_end_sync, vid1_end_sync
-        vid1_swing_len, vid2_swing_len = vid2_swing_len, vid1_swing_len
-        time_offset = vid2_start_sync - vid1_start_sync 
-    
-    
-    # create directories if don't already exist
-    #os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
-    os.makedirs(os.path.dirname(comaprison_path), exist_ok=True)
     
     #initialize video capture
     cap1 = cv2.VideoCapture(video1_path)
     cap2 = cv2.VideoCapture(video2_path)
-
-    if not cap1.isOpened() or not cap2.isOpened():
-        print("Error: Could not open video files.")
-        return
-
-    # match frame rates - sync videos to lower fps
-    fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
-    fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
-    min_fps = min(fps1,fps2)
     
+    # match frame rates - sync videos to lower fps
+    min_fps = min(fps1,fps2)
     if fps1 > fps2:
         paths  = video1_path.split('/')
         newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
         #if os.path.exists(newpath) and os.path.isfile(newpath):
          #   print(f"dropped frame video exists at {min_fps}")
         #else:
-        drop_frames_to_match_fps(video1_path,min_fps,newpath)
+        vid1_start_sync, vid1_end_sync = drop_frames_to_match_fps(video1_path,min_fps,newpath, vid1_start_sync, vid1_end_sync)
+        vid1_swing_len = vid1_end_sync - vid1_start_sync
         video1_path = newpath
         cap1 = cv2.VideoCapture(video1_path)
         fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
         
-    elif fps1 <= fps2:
+    else:
         paths  = video2_path.split('/')
         newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
         #if os.path.exists(newpath) and os.path.isfile(newpath):
            # print(f"dropped frame video exists at {min_fps}")
         #else:
-        drop_frames_to_match_fps(video2_path,min_fps,newpath)
+        vid2_start_sync, vid2_end_sync = drop_frames_to_match_fps(video2_path,min_fps,newpath, vid2_start_sync, vid2_end_sync)
+        vid2_swing_len = vid2_end_sync - vid2_start_sync
         video2_path = newpath
         cap2 = cv2.VideoCapture(video2_path)
         fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
     
+    print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
+    print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
+    
+    # switch videos around if vid1 has a shorter swing len than vid2
+    if vid1_swing_len < vid2_swing_len:
+        print("videos switched!!!!!")
+        keypoints1, keypoints2 = keypoints2, keypoints1   
+        scales1, scales2 = scales2, scales1
+        video1_path, video2_path = video2_path, video1_path
+        vid1_start_sync, vid2_start_sync = vid2_start_sync, vid1_start_sync
+        vid1_end_sync, vid2_end_sync = vid2_end_sync, vid1_end_sync
+        vid1_swing_len, vid2_swing_len = vid2_swing_len, vid1_swing_len
+        fps1, fps2 = fps2, fps1
+        cap1, cap2 = cap2, cap1
+        print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
+        print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
+    
+    time_offset = vid2_start_sync - vid1_start_sync 
+    # create directories if don't already exist
+    #os.makedirs(os.path.dirname(overlay_path), exist_ok=True)
+    os.makedirs(os.path.dirname(comaprison_path), exist_ok=True)
+    
+
+    if not cap1.isOpened() or not cap2.isOpened():
+        print("Error: Could not open video files.")
+        return
+
     # find output video ratio based on usesr video input orientation (vid1)
     vid1_width = int(cap1.get(cv2.CAP_PROP_FRAME_WIDTH))
     vid1_height = int(cap1.get(cv2.CAP_PROP_FRAME_HEIGHT))
     vid2_width = int(cap2.get(cv2.CAP_PROP_FRAME_WIDTH))
     vid2_height = int(cap2.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    print(vid1_width,vid1_height,vid2_width,vid2_height)
+    
     if vid1_width < vid1_height:
         target_width = vid1_width
         target_height = vid1_width
         output_video_height = target_height + vid2_height
+    elif vid2_width < vid2_height:
+        target_width = vid2_width
+        target_height = vid2_width
+        output_video_height = target_height + vid1_height
     else:    
         target_width = max(vid1_width, vid2_width)
         target_height = max(vid1_height, vid2_height)
-        if vid2_width < vid2_height:
-            output_video_height = target_height + vid1_height
-        else:
-            output_video_height = target_height * 2
+        output_video_height = target_height * 2
     output_video_width = target_width 
     
     # find first valid frame between 2 videos 
@@ -111,7 +115,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     out2 = cv2.VideoWriter(comaprison_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
     
     # use body metrics to calculate time offset and sync player swings
-    print(f"Time offset: {time_offset} frames")
+    print(f"Time offset: vid2 - vid1 = {time_offset} frames")
     
     # sync video start based on first pose
     if time_offset > 0:
@@ -167,10 +171,13 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
                 blank_frame = np.zeros_like(frame1)
                 #overlay_frame = draw_overlay(blank_frame, aligned_kp1, aligned_kp2)
 
-                overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
+                #overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
                 if vid1_width <= vid1_height:
                     padded_frame1 = crop_to_square(frame1)
                     padded_frame2 = adjust_frame_to_target(frame2, target_width, vid2_height)
+                elif vid2_width <= vid2_height:
+                    padded_frame1 = adjust_frame_to_target(frame1, target_width, vid1_height)
+                    padded_frame2 = crop_to_square(frame2)
                 else:
                     padded_frame1 = adjust_frame_to_target(frame1, target_width, target_height)
                     padded_frame2 = adjust_frame_to_target(frame2, target_width, target_height)
@@ -362,9 +369,25 @@ def forehand_start_criteria(orientation, i):
     # Body rotation should be negative (right rotated)
     # Left hand extended should be positive
     # Elbow angles (left) should be minimized (as straight as possible)
-    score = (orientation["body_rotation"] - orientation["left_hand_position"] + 
-            orientation["elbow_angle_left"])
-    #print(f"frame{i}: {score}")
+    
+    body_rotation = orientation["body_rotation"] * 100
+    body_rotation_score = -orientation["body_rotation"] if orientation["body_rotation"] > 0 else float('inf')
+    
+    left_hand_position = (orientation["lw_x"] - orientation["rs_x"]) * 1000
+    left_hand_position_score = -left_hand_position if orientation["left_hand_position"] > 0 else float("inf")
+    
+    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["lw_x"] > orientation["rs_x"]
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")
+    
+    elbow_angle_left = orientation["elbow_angle_left"]
+    
+    
+    score = (body_rotation_score + left_hand_position_score + arm_on_right_side_score)
+    
+    if score < float("inf"):
+        print(f"frame: {i} score: {score} body rotation: {body_rotation} l_hand: {left_hand_position} el_angle: {elbow_angle_left}")
+        
+    #score = (orientation["body_rotation"] - orientation["left_hand_position"] + orientation["elbow_angle_left"])
     return score
 
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
@@ -402,18 +425,18 @@ def backhand_start_criteria(orientation, i):
     """
     
     # Condition 1: both wrists to the left of the left shoulder
-    arm_on_right_side = orientation["rw_x"] < orientation["ls_x"] and orientation["lw_x"] < orientation["ls_x"]
-    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")
+    arms_on_left_side = orientation["rw_x"] < orientation["ls_x"] and orientation["lw_x"] < orientation["ls_x"]
+    arms_on_left_side_score = 0 if arms_on_left_side else float("inf")
     
     # Condition 2: Left wirst behind the right shoulder
-    left_hand_right_of_right_shoulder = orientation["lw_z"] < orientation["rs_z"]
-    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")
+    left_hand_behind_right_shoulder = orientation["lw_z"] < orientation["rs_z"]
+    left_hand_behind_right_shoulder_score = orientation["lw_z"] - orientation["rs_z"] if left_hand_behind_right_shoulder else float("inf")
     
-    # Condition 3: Body is rotated to the left (right shoulder is in front of the left shoulder)
-    body_rotated_right = orientation["ls_z"] < orientation["rs_z"]
-    body_rotation_score = 0 if body_rotated_right else float("inf")
+    # Condition 3: Body is rotated to the left (smaller z value for the left shoulder)
+    body_rotated_left = orientation["ls_z"] < orientation["rs_z"]
+    body_rotated_left_score = orientation["ls_z"] - orientation["rs_z"] if body_rotated_left else float("inf")
     
-    # Condition 5: Right foot is in front of the left foot (smaller y value for the left foot)
+    # Condition 5: Right foot is in front of the left foot (smaller z value for the left foot)
     left_foot_in_front = orientation["la_z"] < orientation["ra_z"]
     foot_position_score = 0 if left_foot_in_front else float("inf")
     
@@ -425,17 +448,15 @@ def backhand_start_criteria(orientation, i):
    
     # Total score (0 means all conditions met, inf means at least one condition failed)
     score = (
-        arm_on_right_side_score +
-        left_hand_position_score +
-        body_rotation_score +
+        arms_on_left_side_score +
+        left_hand_behind_right_shoulder_score +
+        body_rotated_left_score +
         foot_position_score + 
         wrist_below_shoulder_score 
     )
     
     if score < float("inf"):
-        pass
-        #print(orientation["elbow_angle_left"], orientation["elbow_angle_right"])
-        #print(f"frame: {i}, wrist together: {wrist_together}")
+        print(f"frame: {i} score: {score}")
     return score
 
 # backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
@@ -463,7 +484,7 @@ def find_best_frame(orientations, criteria, start_frame= 2, end_frame = -2):
             score = criteria(orientation, i)
             if score < best_score:
                 best_score = score
-                best_frame = i
+                best_frame = i 
     return best_frame  
 
 
@@ -481,9 +502,9 @@ def find_most_parallel_and_furthest_segment(keypoints, swing_type):
     # Pose 2 is evaluated only after Pose 1 is found, and it should start after Pose 1 frame
     if pose1_frame is not None:
         if swing_type == "backhand":
-            pose2_frame = find_best_frame(video_orientations, backhand_end_criteria, start_frame=pose1_frame + 1)
+            pose2_frame = find_best_frame(video_orientations, backhand_end_criteria, start_frame=pose1_frame + 5)
         else:  # Assumes only forehand and backhand for now
-            pose2_frame = find_best_frame(video_orientations, forehand_end_criteria1, start_frame=pose1_frame + 1)
+            pose2_frame = find_best_frame(video_orientations, forehand_end_criteria, start_frame=pose1_frame + 5)
     else:
         # If Pose 1 is not found, Pose 2 cannot be evaluated
         pose2_frame = None
@@ -560,14 +581,20 @@ def resize_and_pad(frame, target_width, target_height, pad_color=(0, 0, 0)):
         return cropped_frame
 
 # called by sync_video_timings
-def drop_frames_to_match_fps(video_path, target_fps, output_path):
+def drop_frames_to_match_fps(video_path, target_fps, output_path, vid_start_sync, vid_end_sync):
     """
-    Adjusts the frame rate of a video by dropping frames to match the target FPS.
-    
+    Adjusts the frame rate of a video by dropping frames to match the target FPS, 
+    and adjusts vid_start_sync and vid_end_sync to match the new FPS.
+
     Args:
         video_path (str): Path to the input video.
         target_fps (float): Target frames per second.
         output_path (str): Path to save the output video.
+        vid_start_sync (int): Start frame index based on original FPS.
+        vid_end_sync (int): End frame index based on original FPS.
+
+    Returns:
+        tuple: Adjusted vid_start_sync and vid_end_sync for the new FPS.
     """
     # Open the video file
     cap = cv2.VideoCapture(video_path)
@@ -578,9 +605,9 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path):
     original_fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    print(f"Original FPS: {original_fps}, Target FPS: {target_fps}, Total Frames: {frame_count}")
+    print(f"Original FPS: {original_fps}, Target FPS: {target_fps}, Total Frames: {total_frames}")
 
     # Validate FPS
     if target_fps > original_fps:
@@ -588,6 +615,10 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path):
 
     # Calculate frame skipping interval
     skip_interval = original_fps / target_fps
+
+    # Adjust sync frame indices to new FPS
+    adjusted_vid_start_sync = int(vid_start_sync / skip_interval)
+    adjusted_vid_end_sync = int(vid_end_sync / skip_interval)
 
     # Initialize VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -614,53 +645,65 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path):
     cap.release()
     out.release()
     print(f"Video processed successfully and saved to {output_path}")
-    
+
+    return adjusted_vid_start_sync, adjusted_vid_end_sync
     
  
 def adjust_frame_to_target(frame, target_width, target_height):
     """
-    Adjust a frame to match a target width and height by cropping if larger or padding if smaller.
-    
+    Adjust a frame to match a target width and height by stretching it to fit while maintaining aspect ratio.
+    Pad only if the aspect ratios differ.
+
     Parameters:
         frame (np.ndarray): The input frame (image).
         target_width (int): The target width.
         target_height (int): The target height.
-    
+
     Returns:
         np.ndarray: The adjusted frame.
     """
     original_height, original_width = frame.shape[:2]
+    original_aspect_ratio = original_width / original_height
+    target_aspect_ratio = target_width / target_height
 
-    # Crop if the frame is larger than the target
-    if original_width > target_width:
-        crop_x_start = (original_width - target_width) // 2
-        crop_x_end = crop_x_start + target_width
-        frame = frame[:, crop_x_start:crop_x_end]
-    elif original_width < target_width:  # Pad if the frame is smaller than the target
-        padding_left = (target_width - original_width) // 2
-        padding_right = target_width - original_width - padding_left
-        frame = cv2.copyMakeBorder(frame, 0, 0, padding_left, padding_right, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    # Stretch the frame to match the target dimensions
+    if original_aspect_ratio > target_aspect_ratio:
+        # Original frame is wider: Match the height and stretch width
+        new_width = target_width
+        new_height = int(target_width / original_aspect_ratio)
+    else:
+        # Original frame is taller or matches aspect ratio: Match the width and stretch height
+        new_height = target_height
+        new_width = int(target_height * original_aspect_ratio)
 
-    if original_height > target_height:
-        crop_y_start = (original_height - target_height) // 2
-        crop_y_end = crop_y_start + target_height
-        frame = frame[crop_y_start:crop_y_end, :]
-    elif original_height < target_height:  # Pad if the frame is smaller than the target
-        padding_top = (target_height - original_height) // 2
-        padding_bottom = target_height - original_height - padding_top
-        frame = cv2.copyMakeBorder(frame, padding_top, padding_bottom, 0, 0, cv2.BORDER_CONSTANT, value=(0, 0, 0))
+    # Resize the frame
+    resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
 
-    return frame
+    # Check if padding is needed
+    if new_width != target_width or new_height != target_height:
+        padding_top = (target_height - new_height) // 2
+        padding_bottom = target_height - new_height - padding_top
+        padding_left = (target_width - new_width) // 2
+        padding_right = target_width - new_width - padding_left
+
+        # Add padding to center the frame
+        adjusted_frame = cv2.copyMakeBorder(
+            resized_frame,
+            padding_top, padding_bottom, padding_left, padding_right,
+            cv2.BORDER_CONSTANT, value=(0, 0, 0)
+        )
+        return adjusted_frame
+
+    return resized_frame
 
 
  # Function to extract keypoints and reference scale from a video
  # called by sync_video_timings
-def extract_keypoints_scales_and_fps(video_path):
+def extract_keypoints_and_scale(video_path):
     cap = cv2.VideoCapture(video_path)
     keypoints = []
     scales = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -695,7 +738,7 @@ def extract_keypoints_scales_and_fps(video_path):
             scales.append(None)
 
     cap.release()
-    return keypoints, scales, fps
+    return keypoints, scales, fps   
     
     
 
