@@ -97,6 +97,8 @@ def calculate_body_orientation(keypoints):
                     "le_x": le_x,
                     "lh_x": lh_x,
                     "rh_y": rh_y,
+                    "left_wrist": (lw_x, lw_y, lw_z),
+                    "right_wrist": (rw_x, rw_y, rw_z),
                     "shoulder_hip_distance": shoulder_hip_distance,
                     "both_hands_left_of_body": both_hands_left_of_body,
                     "both_hands_right_of_body": both_hands_right_of_body,
@@ -109,79 +111,6 @@ def calculate_body_orientation(keypoints):
         else:
             orientations.append(None)
     return orientations
-
-
-def find_matching_frames_forehand(orientations, fps, threshold=float("inf")):
-    """
-    Find all frames that meet the criteria within a specified range, ensuring no
-    frames are selected within a cooldown period after a match.
-
-    Parameters:
-    - orientations: List of pose orientations for each frame.
-    - fps: Frames per second of the video.
-    - threshold: Maximum acceptable score to include the frame (default: infinity).
-
-    Returns:
-    - matching_frames: List of indices of frames that meet the criteria.
-    """
-    matching_frames = []
-    cooldown_seconds = 2
-    cooldown_frames = int(cooldown_seconds * fps)  # Number of frames to skip during cooldown
-    last_selected_frame = -cooldown_frames  # Initialize to a value before the start
-
-    min_body_metrics = lambda orientation: len([v for v in orientation.values() if v is not None])
-    required_body_metrics = lambda orientation: len(orientation) / 2  # At least half of the metrics
-    
-    for i, orientation in enumerate(orientations):
-        # Skip if within cooldown
-        if i < last_selected_frame + cooldown_frames:
-            continue
-
-        if orientation:
-            if min_body_metrics(orientation) < required_body_metrics(orientation):
-                continue
-        
-            if forehand_criteria(orientation, i) < threshold:
-                # Calculate scores for the current frame and the next fps/10 frames
-                scores_window = []
-                for j in range(i, min(i + int(fps / 10), len(orientations) - 1)): 
-                    if orientations[j]:  # Ensure the frame has valid orientation data
-                        score = forehand_criteria(orientations[j], j)
-                        scores_window.append(score)
-
-                # Remove non-gradual outliers
-                #if scores_window:
-                    #scores_window.sort()  # Sort the scores to analyze gradual changes
-                    #filtered_scores = [scores_window[0]]  # Initialize with the first score
-
-                    #for k in range(1, len(scores_window)):
-                        # Include only values that don't differ excessively from the previous one
-                        #if abs(scores_window[k] - scores_window[k - 1]) < 0.1:  # Threshold for gradual change
-                            #filtered_scores.append(scores_window[k])
-
-                    # Calculate the average score for this filtered window
-                if scores_window and len(scores_window) > fps/15:
-                    avg_score = np.mean(scores_window)
-                    if avg_score < threshold:
-                        start_frame = max(0, i - fps)
-                        end_frame = min(i+ int(2*fps),len(orientations) - 1)
-                        start_swing = find_best_frame(orientations[start_frame:end_frame], forehand_start_criteria)
-                        if start_swing is None:
-                            continue
-                        contact_swing = find_best_frame(orientations[start_frame:end_frame], forehand_end_criteria, start_frame= start_swing)
-                        if contact_swing is None:
-                            continue
-                        end_swing = find_best_frame(orientations[start_frame:end_frame], forehand_end_criteria1, start_frame= contact_swing)
-                        if start_swing is not None and end_swing is not None and end_swing - start_swing > 0:
-                            swing_len = end_swing - start_swing
-                            print(f"swing len: {swing_len}")
-                            matching_frames.append((max(0, i - fps), min(i+ int(2*fps),len(orientations) - 1)))
-                            print(f"forehand frame {(max(0, i), i + (2 * fps))}")
-                            last_selected_frame = i  # Update the last selected frame
-
-
-
-    return matching_frames
 
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def forehand_end_criteria1(orientation, i):
@@ -201,15 +130,172 @@ def forehand_end_criteria1(orientation, i):
         #print(f"frame{i}: {total_score}")  # Debugging output
     return total_score
 
-def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=float("inf")):
+
+def calculate_average_wrist_velocity(right_wrist_coords, fps, shoulder_to_hip_length):
+    """
+    Calculate the average of the top 5 wrist velocities weighted by magnitude for a given list of right wrist coordinates,
+    using x, y, and z axes, and normalizing by shoulder-to-hip length. Only consider frames where z increases.
+    Additionally, determine if the wrist generally moves to the right (positive x direction) and both y and z increase overall.
+
+    Parameters:
+        right_wrist_coords (list): List of right wrist coordinates [(x, y, z), ...] for each frame.
+        fps (int): Frames per second of the video.
+        shoulder_to_hip_length (float): Length from shoulder to hip for normalization.
+
+    Returns:
+        tuple: (float, bool, bool)
+            - The average of the top 5 weighted wrist velocities where z increases, normalized by shoulder-to-hip length.
+            - A boolean indicating if the wrist generally moves to the right (True) or to the left (False).
+            - A boolean indicating if both y and z values increase overall (True) or not (False).
+    """
+    if shoulder_to_hip_length <= 0:
+        raise ValueError("Shoulder-to-hip length must be greater than 0 for normalization.")
+
+    weighted_velocities = []
+    cumulative_x_movement = 0
+    cumulative_y_movement = 0
+    cumulative_z_change = 0
+    time_interval = 1 / fps  # Time interval for every frame
+    normalization_factor = 1 / shoulder_to_hip_length
+
+    for i in range(1, len(right_wrist_coords)):  # Iterate through consecutive frames
+        if right_wrist_coords[i] is None or right_wrist_coords[i - 1] is None:
+            continue  # Skip frames with missing data
+
+        # Extract coordinates for the current and previous frames
+        x1, y1, z1 = right_wrist_coords[i - 1]
+        x2, y2, z2 = right_wrist_coords[i]
+
+        # Update cumulative x-axis, y-axis, and z-axis movement
+        cumulative_x_movement += (x2 - x1)
+        cumulative_y_movement += (y2 - y1)
+        cumulative_z_change += (z2 - z1)
+
+        # Only calculate velocity if z increases in the current frame
+        if z2 > z1:
+            # Calculate the change in position (displacement)
+            displacement = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
+
+            # Calculate velocity
+            velocity = (displacement * normalization_factor) / time_interval
+
+            # Weight velocity by magnitude (displacement)
+            weighted_velocity = velocity * displacement
+            weighted_velocities.append(weighted_velocity)
+
+    # Determine if wrist generally moves to the right and if y and z increase overall
+    moves_right = cumulative_x_movement > 0
+    z_and_y_increase = (cumulative_y_movement > 0) and (cumulative_z_change > 0)
+
+    # Return the average of the top 5 weighted velocities, direction of movement, and overall z and y increase
+    max_velocity = np.max(weighted_velocities) if weighted_velocities else 0.0
+    return max_velocity
+
+
+def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), velocity_threshold=5):
     """
     Find all frames that meet the criteria within a specified range, ensuring no
-    frames are selected within a cooldown period after a match.
+    frames are selected within a cooldown period after a match. Includes wrist velocity as a criterion.
+
+    Parameters:
+    - orientations: List of pose orientations for each frame, including wrist coordinates.
+    - fps: Frames per second of the video.
+    - threshold: Maximum acceptable score to include the frame (default: infinity).
+    - velocity_threshold: Minimum wrist velocity required to consider the frame (default: 5.0).
+
+    Returns:
+    - matching_frames: List of indices of frames that meet the criteria.
+    """
+    matching_frames = []
+    cooldown_seconds = 2
+    cooldown_frames = int(cooldown_seconds * fps)  # Number of frames to skip during cooldown
+    last_selected_frame = -cooldown_frames  # Initialize to a value before the start
+
+    min_body_metrics = lambda orientation: len([v for v in orientation.values() if v is not None])
+    required_body_metrics = lambda orientation: len(orientation) / 2  # At least half of the metrics
+
+    for i, orientation in enumerate(orientations):
+        # Skip if within cooldown
+        if i < last_selected_frame + cooldown_frames:
+            continue
+
+        if orientation:
+            # Ensure the minimum number of valid metrics
+            if min_body_metrics(orientation) < required_body_metrics(orientation):
+                continue
+
+            # Check forehand criteria score
+            if forehand_criteria(orientation, i) < threshold and not backhand_criteria(orientation, i) < threshold:
+                # Define the window for wrist velocity and scores
+                window_start = i
+                window_end = min(i + int(fps), len(orientations) - 1)
+
+                # Extract right wrist coordinates for the entire window
+                right_wrist_coords = [
+                    orientations[k]['right_wrist'] for k in range(window_start, window_end) if orientations[k]
+                ]
+                
+                valid_distances = [
+                    orientations[k]['wrist_distance'] for k in range(window_start, window_end) if orientations[k]
+                ]
+
+                wrists_together_check = np.max(valid_distances) > 1.5
+
+                
+                # Calculate wrist velocities for the window
+                avg_wrist_velocity = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
+                #print(f"frames: {i} to {window_end} wrist_velocity: {avg_wrist_velocity}")
+                #if avg_wrist_velocity > velocity_threshold:
+                    #print(f"frames: {i} to {window_end} wrist_velocity: {avg_wrist_velocity}")
+
+                # Check if any velocity in the window exceeds the threshold
+                velocity_exceeds_threshold = avg_wrist_velocity > velocity_threshold
+
+                if velocity_exceeds_threshold and wrists_together_check:
+                    scores_window = []
+                    for j in range(i, min(i + int(fps / 10), len(orientations) - 1)):
+                        if orientations[j]:  # Ensure valid orientation data
+                            score = forehand_criteria(orientations[j], j)
+                            scores_window.append(score)
+
+                    # Ensure scores meet the criteria
+                    if scores_window and len(scores_window) > fps/15:
+                        avg_score = np.mean(scores_window)
+                        if avg_score < threshold:
+                            start_frame = max(0, i - fps)
+                            end_frame = min(i + int(2 * fps), len(orientations) - 1)
+                            start_swing = find_best_frame(
+                                orientations[start_frame:end_frame], forehand_start_criteria
+                            )
+                            if start_swing is None:
+                                continue
+                            contact_swing = find_best_frame(
+                                orientations[start_frame:end_frame], forehand_end_criteria, start_frame=start_swing
+                            )
+                            if contact_swing is None:
+                                continue
+                            end_swing = find_best_frame(
+                                orientations[start_frame:end_frame], forehand_end_criteria1, start_frame=contact_swing
+                            )
+                            if start_swing is not None and end_swing is not None and end_swing - start_swing > 0:
+                                swing_len = end_swing - start_swing
+                                matching_frames.append((start_frame, end_frame))
+                                print(f"forehand frame {window_start, window_end} avg_wrist_velocity: {avg_wrist_velocity} swing len: {swing_len}")
+                                last_selected_frame = i  # Update the last selected frame
+
+    return matching_frames
+
+def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=float("inf"), velocity_threshold=5):
+    """
+    Find all backhand frames that meet the criteria, ensuring no frames are selected
+    within a cooldown period after a match. Includes wrist velocity as a criterion.
 
     Parameters:
     - orientations: List of pose orientations for each frame.
     - fps: Frames per second of the video.
+    - forehand_frames: List of forehand frame ranges to skip for backhands.
     - threshold: Maximum acceptable score to include the frame (default: infinity).
+    - velocity_threshold: Minimum average wrist velocity required to consider the frame (default: 5.0).
 
     Returns:
     - matching_frames: List of indices of frames that meet the criteria.
@@ -234,41 +320,52 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                 continue
 
             if backhand_criteria(orientation, i) < threshold:
-                # Calculate scores for the current frame and the next fps frames
-                scores_window = []
-                for j in range(max(1, i - int(fps)), min(i+ int(fps),len(orientations) - 1)): 
-                    if orientations[j] and orientations[j]["wrist_distance"] < 0.3:  # Ensure the frame has valid orientation data
-                        score = (orientations[j]["rs_z"] - orientations[j]["lw_z"]) / orientations[j]["shoulder_hip_distance"]
-                        scores_window.append(score)
+                # Define the window for wrist velocity and scores
+                window_start = max(1, i - int(fps))
+                window_end = min(i+ int(fps),len(orientations) - 1)
 
-                # Remove non-gradual outliers
-                #if scores_window:
-                    #scores_window.sort()  # Sort the scores to analyze gradual changes
-                    #filtered_scores = [scores_window[0]]  # Initialize with the first score
+                # Extract right wrist coordinates for the entire window
+                right_wrist_coords = [
+                    orientations[k]['right_wrist'] for k in range(window_start + int(fps), min(window_end + int(fps),len(orientations) - 1)) if orientations[k]
+                ]
+                left_wrist_coords = [
+                    orientations[k]['left_wrist'] for k in range(window_start+ int(fps), min(window_end + int(fps),len(orientations) - 1)) if orientations[k]
+                ]
+                # Calculate wrist velocities for the window
+                avg_wrist_velocity_right = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
+                avg_wrist_velocity_left = calculate_average_wrist_velocity(left_wrist_coords, fps, orientation['shoulder_hip_distance'])
+                avg_wrist_velocity = avg_wrist_velocity_left
+                if avg_wrist_velocity > velocity_threshold:
+                    #print(f"Backhand frames: {i} to {window_end}, wrist_velocity: {avg_wrist_velocity}")
+                    pass
 
-                    #for k in range(1, len(scores_window)):
-                        # Include only values that don't differ excessively from the previous one
-                        #if abs(scores_window[k] - scores_window[k - 1]) < 0.1:  # Threshold for gradual change
-                            #filtered_scores.append(scores_window[k])
+                # Check if average velocity exceeds the threshold
+                velocity_exceeds_threshold = avg_wrist_velocity > velocity_threshold
 
-                    # Calculate the average score for this filtered window
-                if scores_window:
-                    avg_score = np.mean(scores_window)
-                    scores_window.sort()
-                    wrist_depth_diff = scores_window[-1]
-                    if len(scores_window) > fps/2 and avg_score > 0 and wrist_depth_diff > 2:
-                    #if len(scores_window) > fps/2 and avg_score < 0.35:
-                        skip = False
-                        for forehand_frame in forehand_frames:
-                            if forehand_frame[0] <= i + fps and i <= forehand_frame[1]:
-                                #print(f"skipped frame {i}: {avg_score}")
-                                skip = True
-                                break
-                        if not skip:    
-                            print(f"backhand frame {i}: {avg_score}, scores{wrist_depth_diff}")
-                            matching_frames.append((max(0, i- int(fps)), i + (2 * fps)))
-                            last_selected_frame = i  # Update the last selected frame
-                        
+                if velocity_exceeds_threshold:
+                    scores_window = []
+                    for j in range(window_start, window_end):
+                        if orientations[j] and orientations[j]["wrist_distance"] < 0.3:  # Ensure valid orientation data
+                            score = (orientations[j]["rs_z"] - orientations[j]["lw_z"]) / orientations[j]["shoulder_hip_distance"]
+                            scores_window.append(score)
+
+                    # Ensure scores meet the criteria
+                    if scores_window:
+                        avg_score = np.mean(scores_window)
+                        scores_window.sort()
+                        wrist_depth_diff = scores_window[-1]
+                        if len(scores_window) > fps / 2 and avg_score > 0 and wrist_depth_diff > 2:
+                            skip = False
+                            for forehand_frame in forehand_frames:
+                                if forehand_frame[0] <= i + fps and i <= forehand_frame[1]:
+                                    skip = True
+                                    break
+                            if not skip:
+                                #print(f"Backhand frame {i}: {avg_score}, scores {wrist_depth_diff}")
+                                print(f"Backhand frames: {(window_start, window_end)}, avg_wrist_velocity: {avg_wrist_velocity}")
+                                matching_frames.append((window_start, min(window_end + int(fps),len(orientations) - 1)))
+                                last_selected_frame = i  # Update the last selected frame
+
     return matching_frames
 
 def forehand_criteria(orientation, i):
@@ -299,18 +396,16 @@ def forehand_criteria(orientation, i):
     left_foot_in_front = orientation["la_z"] > orientation["ra_z"]
     foot_position_score = 0 if left_foot_in_front else float("inf")
     
-    # Condition 7: Right wrist is below the right shoulder
-    right_wrist_below_shoulder = orientation["rw_y"] > orientation["rs_y"]
-    wrist_below_shoulder_score = 0 if right_wrist_below_shoulder else float("inf")
-    
+    wrist_together = orientation["wrist_distance"]
+    wrist_together_score = 0 if orientation["wrist_distance"] > 0.4 else float("inf")
 
     # Total score (0 means all conditions met, inf means at least one condition failed)
     score = (
         arm_on_right_side_score +
         left_hand_position_score +
         body_rotation_score +
-        foot_position_score +
-        wrist_below_shoulder_score 
+        foot_position_score
+        #+wrist_together_score
     )
     
     return score

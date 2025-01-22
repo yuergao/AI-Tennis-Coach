@@ -385,7 +385,8 @@ def forehand_start_criteria(orientation, i):
     score = (body_rotation_score + left_hand_position_score + arm_on_right_side_score)
     
     if score < float("inf"):
-        print(f"frame: {i} score: {score} body rotation: {body_rotation} l_hand: {left_hand_position} el_angle: {elbow_angle_left}")
+        #print(f"frame: {i} score: {score} body rotation: {body_rotation} l_hand: {left_hand_position} el_angle: {elbow_angle_left}")
+        pass
         
     #score = (orientation["body_rotation"] - orientation["left_hand_position"] + orientation["elbow_angle_left"])
     return score
@@ -504,7 +505,7 @@ def find_most_parallel_and_furthest_segment(keypoints, swing_type):
         if swing_type == "backhand":
             pose2_frame = find_best_frame(video_orientations, backhand_end_criteria, start_frame=pose1_frame + 5)
         else:  # Assumes only forehand and backhand for now
-            pose2_frame = find_best_frame(video_orientations, forehand_end_criteria, start_frame=pose1_frame + 5)
+            pose2_frame = find_best_frame(video_orientations, forehand_end_criteria1, start_frame=pose1_frame + 5)
     else:
         # If Pose 1 is not found, Pose 2 cannot be evaluated
         pose2_frame = None

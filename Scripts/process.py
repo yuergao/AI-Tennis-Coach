@@ -12,23 +12,20 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 swing_type = 'forehand'
 extension = '.mp4'
 
-player1 = 'audrey'
+player1 = 'sabalenka'
 player1_vid_idx = 1
 player1_swing_idx = 1
+
+player1_vid = f"{player1}{player1_vid_idx}"
+player1_vid_swing = f"{player1_vid}_{swing_type}{player1_swing_idx}"
+video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 
 player2 = 'swiatek'
 player2_vid_idx = 1
 player2_swing_idx = 2
 
-
-# construct based on user inputs
-player1_vid = f"{player1}{player1_vid_idx}"
-player1_vid_swing = f"{player1_vid}_{swing_type}{player1_swing_idx}"
-
 player2_vid = f"{player2}{player2_vid_idx}"
 player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
-
-video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
 pipeline1 = True
@@ -43,7 +40,7 @@ original_video1_path = f"{player1}/{player1_vid}/{player1_vid}{extension}"
 original_video2_path = f"{player2}/{player2_vid}/{player2_vid}{extension}"
 
 ''' controls which video to be segmented'''
-video_paths = [original_video1_path]
+video_paths = [original_video1_path, original_video2_path]
 
 if pipeline1:
     for video_path in video_paths:
