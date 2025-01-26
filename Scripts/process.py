@@ -12,24 +12,24 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 swing_type = 'forehand'
 extension = '.mp4'
 
-player1 = 'sabalenka'
-player1_vid_idx = 1
+player1 = 'audrey'
+player1_vid_idx = 6
 player1_swing_idx = 1
 
 player1_vid = f"{player1}{player1_vid_idx}"
 player1_vid_swing = f"{player1_vid}_{swing_type}{player1_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 
-player2 = 'swiatek'
-player2_vid_idx = 1
+player2 = 'audrey'
+player2_vid_idx = 4
 player2_swing_idx = 2
 
 player2_vid = f"{player2}{player2_vid_idx}"
 player2_vid_swing = f"{player2_vid}_{swing_type}{player2_swing_idx}"
 video2_path = f"{player2}/{player2_vid}/{swing_type}/{player2_vid_swing}{extension}"
 
-pipeline1 = True
-pipeline2 = False
+pipeline1 = False
+pipeline2 = True
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
@@ -40,7 +40,7 @@ original_video1_path = f"{player1}/{player1_vid}/{player1_vid}{extension}"
 original_video2_path = f"{player2}/{player2_vid}/{player2_vid}{extension}"
 
 ''' controls which video to be segmented'''
-video_paths = [original_video1_path, original_video2_path]
+video_paths = [original_video1_path]
 
 if pipeline1:
     for video_path in video_paths:
@@ -59,6 +59,9 @@ if pipeline1:
         forehand_frames, backhand_frames = detect_swing_boundaries(keypoints, fps)
 
         # Segment swings based on the detected frames
+        '''
+        ----------forehand_segments and backhand_segments contains tupled frame index array------------
+        '''
         forehand_segments = segment_swings(forehand_frames)
         backhand_segments = segment_swings(backhand_frames)
 
@@ -101,7 +104,7 @@ if pipeline2:
         if "_fps." in video2:
             continue
         keypoints2, scales2, fps2 = extract_keypoints_and_scale(video2)
-        frame_sync_stamps2 = find_most_parallel_and_furthest_segment(keypoints2, swing_type)
+        frame_sync_stamps2 = find_most_parallel_and_furthest_segment(keypoints2, swing_type, fps2)
         
         if frame_sync_stamps2[0] is None or frame_sync_stamps2[1] is None:
             continue
@@ -112,7 +115,7 @@ if pipeline2:
         if "_fps." in video1:
             continue
         keypoints1, scales1, fps1 = extract_keypoints_and_scale(video1)
-        frame_sync_stamps1 = find_most_parallel_and_furthest_segment(keypoints1, swing_type)
+        frame_sync_stamps1 = find_most_parallel_and_furthest_segment(keypoints1, swing_type, fps1)
         if frame_sync_stamps1[0] is None or frame_sync_stamps1[1] is None:
             continue
         vid1_swing_len = frame_sync_stamps1[1]- frame_sync_stamps1[0]
