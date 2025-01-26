@@ -9,7 +9,10 @@ import os
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 mp_pose = mp_solutions.pose
-pose = mp_pose.Pose()
+pose = mp_pose.Pose(
+    model_complexity=0, 
+    min_detection_confidence=0.9, 
+    min_tracking_confidence=0.8)
 # Function to calculate body orientation and distances for each frame
 # called by find_most_parallel_and_furthest_segment
 def calculate_body_orientation(keypoints):
@@ -239,6 +242,8 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), vel
                     orientations[k]['wrist_distance'] for k in range(window_start, window_end) if orientations[k]
                 ]
 
+                if not valid_distances:
+                    continue
                 wrists_together_check = np.max(valid_distances) > 1.5
 
                 
@@ -257,30 +262,21 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), vel
                         if orientations[j]:  # Ensure valid orientation data
                             score = forehand_criteria(orientations[j], j)
                             scores_window.append(score)
+                    
+
 
                     # Ensure scores meet the criteria
                     if scores_window and len(scores_window) > fps/15:
                         avg_score = np.mean(scores_window)
                         if avg_score < threshold:
-                            start_frame = max(0, i - fps)
-                            end_frame = min(i + int(2 * fps), len(orientations) - 1)
-                            start_swing = find_best_frame(
-                                orientations[start_frame:end_frame], forehand_start_criteria
-                            )
-                            if start_swing is None:
-                                continue
+                            start_frame = max(0, i)
+                            end_frame = min(i + int(3 * fps), len(orientations) - 1)
                             contact_swing = find_best_frame(
-                                orientations[start_frame:end_frame], forehand_end_criteria, start_frame=start_swing
-                            )
-                            if contact_swing is None:
-                                continue
-                            end_swing = find_best_frame(
-                                orientations[start_frame:end_frame], forehand_end_criteria1, start_frame=contact_swing
-                            )
-                            if start_swing is not None and end_swing is not None and end_swing - start_swing > 0:
-                                swing_len = end_swing - start_swing
-                                matching_frames.append((start_frame, end_frame))
-                                print(f"forehand frame {window_start, window_end} avg_wrist_velocity: {avg_wrist_velocity} swing len: {swing_len}")
+                                orientations[start_frame:end_frame], forehand_end_criteria, start_frame)
+                            if contact_swing:
+                                swing_len = contact_swing - start_frame
+                                matching_frames.append((start_frame - fps, contact_swing + fps))
+                                print(f"forehand frame {window_start, contact_swing} avg_wrist_velocity: {avg_wrist_velocity} swing len: {swing_len}")
                                 last_selected_frame = i  # Update the last selected frame
 
     return matching_frames
@@ -474,7 +470,8 @@ def backhand_criteria(orientation, i):
 def detect_swing_boundaries(keypoints, fps):
     orientations = calculate_body_orientation(keypoints)
     forehand_frames = find_matching_frames_forehand(orientations,fps)
-    backhand_frames = find_matching_frames_backhand(orientations,fps, forehand_frames)
+    #backhand_frames = find_matching_frames_backhand(orientations,fps, forehand_frames)
+    backhand_frames = []
     
     # Look for key aspects of tennis swing based on wrist position
     return [forehand_frames, backhand_frames]
@@ -535,7 +532,10 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
     # Initialize MediaPipe Pose if pose drawing is enabled
     if draw_pose:
         mp_pose = mp.solutions.pose
-        pose = mp_pose.Pose()
+        pose = mp_pose.Pose(
+                model_complexity=0, 
+                min_detection_confidence=0.9, 
+                min_tracking_confidence=0.8)
         mp_drawing = mp.solutions.drawing_utils
 
     while frame_idx <= end_frame:
@@ -589,24 +589,23 @@ def extract_keypoints_from_video(video_path):
     keypoints = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     
-    with mp_pose.Pose(min_detection_confidence=0.9, min_tracking_confidence=0.8) as pose:
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            # Convert the BGR image to RGB
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = pose.process(frame_rgb)
-            
-            # If landmarks are detected
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks.landmark
-                # Collect keypoints (x, y, z coordinates)
-                frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-                keypoints.append(frame_keypoints)
-            else:
-                keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # Convert the BGR image to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(frame_rgb)
+        
+        # If landmarks are detected
+        if results.pose_landmarks:
+            landmarks = results.pose_landmarks.landmark
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
                 
     cap.release()
     return np.array(keypoints), fps

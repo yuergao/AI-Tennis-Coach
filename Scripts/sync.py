@@ -386,18 +386,22 @@ def forehand_start_criteria(orientation, i):
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def forehand_end_criteria(orientation, i):
     # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
-    body_rotation_score = abs(orientation["body_rotation"])
+    #body_rotation_score = abs(orientation["body_rotation"])
 
     # Ensure the entire right arm is on the right side of the body
-    arm_on_right_side = orientation["rw_x"] > orientation["rs_x"] and orientation["re_x"] > orientation["rs_x"]
+    arm_on_right_side = orientation["rw_x"] < orientation["rs_x"] 
     arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
 
     # Ensure the left hand is to the left of the right shoulder
     left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
     left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
-
+    
+    #Ensure that the right hand is in front of the body 
+    right_hand_in_front = orientation["rw_z"] > orientation["rs_z"]
+    right_hand_in_front_score = 0 if right_hand_in_front else float("inf")
+    
     # Combine all criteria (can be weighted if necessary)
-    total_score = body_rotation_score + arm_on_right_side_score + left_hand_position_score
+    total_score = arm_on_right_side_score + left_hand_position_score + right_hand_in_front_score
     if total_score < float("inf"):
         pass
         #print(f"frame{i}: {total_score}")  # Debugging output
@@ -469,22 +473,27 @@ def backhand_end_criteria(orientation, i):
 
 # finds the best frame according to the pose criteria. 
 # called by find_most_parallel_and_furthest_segment.   
-def find_best_frame(orientations, criteria, start_frame=1, end_frame=-1):
+def find_best_frame(orientations, criteria, start_frame):
     best_frame = None
     best_score = float("inf")
+    score1 = float("inf")
+    score2 = float("inf")
 
-    for i, orientation in enumerate(orientations[start_frame:end_frame], start=start_frame):  # Loop to check pairs of consecutive frames
-        orientation1 = orientations[i]
-        orientation2 = orientations[i + 1]
+    prev_orientation = None  # Initialize previous orientation
 
-        if orientation1:
-            score1 = criteria(orientation1, i)
-            score2 = criteria(orientation2, i + 1)
-                
-            # Check if both consecutive scores are less than the current best_score
-            if score1 < best_score:
+    for i, orientation in enumerate(orientations, start=start_frame):  # Loop to check pairs of consecutive frames
+        if orientation:
+            if prev_orientation:  # Ensure there is a previous orientation
+                # Use both current and previous orientations in the criteria
+                score1 = criteria(prev_orientation, i-1)
+                score2 = criteria(orientation, i)
+
+            # Check if the score is less than the current best_score
+            if score1 < best_score and score2 < best_score:
                 best_score = score1
-                best_frame = i 
+                best_frame = i
+
+        prev_orientation = orientation  # Update prev_orientation
     return best_frame  
 
 

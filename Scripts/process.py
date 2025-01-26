@@ -13,15 +13,15 @@ swing_type = 'forehand'
 extension = '.mp4'
 
 player1 = 'audrey'
-player1_vid_idx = 6
+player1_vid_idx = 4
 player1_swing_idx = 1
 
 player1_vid = f"{player1}{player1_vid_idx}"
 player1_vid_swing = f"{player1_vid}_{swing_type}{player1_swing_idx}"
 video1_path = f"{player1}/{player1_vid}/{swing_type}/{player1_vid_swing}{extension}"
 
-player2 = 'audrey'
-player2_vid_idx = 4
+player2 = 'sinner'
+player2_vid_idx = 1
 player2_swing_idx = 2
 
 player2_vid = f"{player2}{player2_vid_idx}"
@@ -39,48 +39,55 @@ pipeline2 = True
 original_video1_path = f"{player1}/{player1_vid}/{player1_vid}{extension}"
 original_video2_path = f"{player2}/{player2_vid}/{player2_vid}{extension}"
 
+audrey_paths = [('sinner',1)]
+test_paths = [('zverev',1),('alcaraz',1),('medvedev',1),('player',1),('player',2),('swiatek',1),('gauff',1),('badosa',1),('player',8),('insta',1),('player',6),('player',7)]
+
 ''' controls which video to be segmented'''
-video_paths = [original_video1_path]
-
 if pipeline1:
-    for video_path in video_paths:
-        output_levels = video_path.split('/')
-        output_folder = f"{output_levels[0]}/{output_levels[1]}"   
-        forehand_path = f"{output_folder}/forehand"
-        backhand_path = f"{output_folder}/backhand"
-        
-        clear_output_folder(forehand_path)
-        clear_output_folder(backhand_path)
-        
-        #Extract keypoints from the video
-        keypoints, fps = extract_keypoints_from_video(video_path)
+    for player, player_vid_idx in audrey_paths:
+        player_vid = f"{player}{player_vid_idx}"
+        original_video1_path = f"{player}/{player_vid}/{player_vid}{extension}"
+        video_paths = [original_video1_path]
 
-        # Detect swing boundaries
-        forehand_frames, backhand_frames = detect_swing_boundaries(keypoints, fps)
+        for video_path in video_paths:
+            output_levels = video_path.split('/')
+            output_folder = f"{output_levels[0]}/{output_levels[1]}"   
+            forehand_path = f"{output_folder}/forehand"
+            backhand_path = f"{output_folder}/backhand"
+            
+            clear_output_folder(forehand_path)
+            #clear_output_folder(backhand_path)
+            
+            #Extract keypoints from the video
+            keypoints, fps = extract_keypoints_from_video(video_path)
+            print(f"Finished keypoint extraction for {player}.")
 
-        # Segment swings based on the detected frames
-        '''
-        ----------forehand_segments and backhand_segments contains tupled frame index array------------
-        '''
-        forehand_segments = segment_swings(forehand_frames)
-        backhand_segments = segment_swings(backhand_frames)
+            # Detect swing boundaries
+            forehand_frames, backhand_frames = detect_swing_boundaries(keypoints, fps)
 
-        print(f"Detected {len(forehand_segments)} forehands and {len(backhand_frames)} backhands.")
+            # Segment swings based on the detected frames
+            '''
+            ----------forehand_segments and backhand_segments contains tupled frame index array------------
+            '''
+            forehand_segments = segment_swings(forehand_frames)
+            backhand_segments = segment_swings(backhand_frames)
 
-        # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(forehand_segments):
-            if start_frame >= 0 and end_frame > start_frame:
-                #find previous directory
-                output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
-                extract_motion_segment(video_path, start_frame, end_frame, output_video)
+            print(f"Detected {len(forehand_segments)} forehands and {len(backhand_frames)} backhands.")
 
-        # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(backhand_segments):
-            if start_frame >= 0 and end_frame > start_frame:
-                #find previous directory
-                output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
-                extract_motion_segment(video_path, start_frame, end_frame, output_video)
-                
+            # Process each swing and extract video segments
+            for idx, (start_frame, end_frame) in enumerate(forehand_segments):
+                if start_frame >= 0 and end_frame > start_frame:
+                    #find previous directory
+                    output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
+                    extract_motion_segment(video_path, start_frame, end_frame, output_video)
+
+            # Process each swing and extract video segments
+            for idx, (start_frame, end_frame) in enumerate(backhand_segments):
+                if start_frame >= 0 and end_frame > start_frame:
+                    #find previous directory
+                    output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
+                    extract_motion_segment(video_path, start_frame, end_frame, output_video)
+                    
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
