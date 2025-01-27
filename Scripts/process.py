@@ -9,8 +9,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 # User inputs
-pipeline1 = False # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = True  # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = False  # <<<<<<<<<<<<<<<<<<<<<<<
 extension = '.mp4'
 
 '''
@@ -18,13 +18,13 @@ extension = '.mp4'
 ---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
-audrey_paths = [('audrey',11),('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',8),('audrey',9),('audrey',10),('audrey',1)]
+audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',8),('audrey',9),('audrey',10),('audrey',1)]
 amature_paths = [('claire',1),('player',1),('player',2),('player',4),('player',6),('player',7),('player',8),('insta',1)]
 pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev',1),('ruud',1),('Djokovic',1),('Minaur',1)]
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 
 
-test_paths = audrey_paths # <<<<<<<<<<<<<<<<<<<<<<<
+test_paths = [('audrey',15)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
     for player, player_vid_idx in test_paths:
@@ -41,24 +41,13 @@ if pipeline1:
             clear_output_folder(forehand_path)
             clear_output_folder(backhand_path)
             
-            output_video = f"{forehand_path}/{output_levels[1]}_forehand{1}{extension}"
-            extract_motion_segment(video_path, 1, 400, output_video)
-            
             #Extract keypoints from the video
             keypoints, fps = extract_keypoints_from_video(video_path)
             print(f"Finished keypoint extraction for {player}{player_vid_idx}.")
 
             # Detect swing boundaries
-            forehand_frames, backhand_frames = detect_swing_boundaries(keypoints, fps)
-
-            # Segment swings based on the detected frames
-            '''
-            ----------forehand_segments and backhand_segments contains tupled frame index array------------
-            '''
-            forehand_segments = segment_swings(forehand_frames) # <<<<<<<<<<<<<<<<<<<<<<<
-            backhand_segments = segment_swings(backhand_frames) # <<<<<<<<<<<<<<<<<<<<<<<
-
-            print(f"Detected {len(forehand_segments)} forehands and {len(backhand_frames)} backhands.")
+            forehand_segments, backhand_segments = detect_swing_boundaries(keypoints, fps)
+            print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
 
             # Process each swing and extract video segments
             for idx, (start_frame, end_frame) in enumerate(forehand_segments):
