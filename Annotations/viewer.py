@@ -32,10 +32,7 @@ def play_video_slow(video_path):
             if not ret:
                 break
 
-            # Get the current timestamp in milliseconds
-            current_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))
-            formatted_time = format_timestamp(current_timestamp)
-            print(f"Timestamp: {formatted_time}")
+            
 
             # Display the video frame
             cv2.imshow("Video Playback", frame)
@@ -46,6 +43,12 @@ def play_video_slow(video_path):
             break
         elif key == ord('p'):  # Pause or unpause the video
             paused = not paused
+            # Get the current timestamp in milliseconds
+            if paused:
+                current_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+                formatted_time = format_timestamp(current_timestamp)
+                
+                print(f"Timestamp: {formatted_time}")
 
     # Release the video capture and close windows
     cap.release()
