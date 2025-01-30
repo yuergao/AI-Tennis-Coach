@@ -37,13 +37,14 @@ def convert_ts_ms(timestamp_str):
     
 
 def calculated_iou(segment1, segment2):
-    # segment = (start_time, end_time) in hh:mm:ss:ms as string, need to do .strip() and then format to milliseconds
+    '''
+    Calculate the intersection over union of two segments.
+    segment1: (start_time1, end_time1) in milliseconds
+    segment2: (start_time2, end_time2) in milliseconds
+    '''
     start_time1, end_time1 = segment1
     start_time2, end_time2 = segment2
-    start_time1 = convert_ts_ms(start_time1)
-    end_time1 = convert_ts_ms(end_time1)
-    start_time2 = convert_ts_ms(start_time2)
-    end_time2 = convert_ts_ms(end_time2)
+
     intersection = max(0, min(end_time1, end_time2) - max(start_time1, start_time2))
     union = max(end_time1, end_time2) - min(start_time1, start_time2)
     return intersection / union
@@ -51,14 +52,16 @@ def calculated_iou(segment1, segment2):
 def segment_gt_matching(segment, gt_segments):
     highest_iou = 0
     matched_segment = None
-    for gt_segment in gt_segments:
+    for gt_segment_idx, gt_segment in enumerate(gt_segments):
         iou = calculated_iou(segment, gt_segment)
         if iou > highest_iou:
             highest_iou = iou
-            matched_segment = gt_segment
+            matched_segment = gt_segment_idx
     return matched_segment, highest_iou
 
 # evaluate segmentation ability
+def frame_idx_to_ms(frame_idx, fps):
+    return frame_idx * 1000 / fps
 
 def get_segments(video_path):
     # load video
@@ -66,8 +69,9 @@ def get_segments(video_path):
     keypoints, fps = extract_keypoints_from_video(video_path)
     # detect swing boundaries
     forehand_segments, backhand_segments = detect_swing_boundaries(keypoints, fps)
-    return [*forehand_segments, *backhand_segments]
-    
+    segments = [*forehand_segments, *backhand_segments] # (start_frame, end_frame), need to add stroke_cat
+    segments = [(frame_idx_to_ms(start_frame, fps), frame_idx_to_ms(end_frame, fps), "f" if i < len(forehand_segments) else "b") for i, (start_frame, end_frame) in enumerate(segments)]
+    return segments
 
 if __name__ == '__main__':
     annotation_path = '../Annotations/annotations.csv'
@@ -77,26 +81,31 @@ if __name__ == '__main__':
     processing_times = []
     for video_path in annot_df['video_path'].unique():
         # todo 
-        gt_segments = [(row['start_time'], row['end_time']) for _, row in annot_df[annot_df['video_path'] == video_path].iterrows()]
+        gt_segments = [(convert_ts_ms(row['start_time']), convert_ts_ms(row['end_time'])) for _, row in annot_df[annot_df['video_path'] == video_path].iterrows()]
         gt_stroke_cats = [row['stroke_cat'] for _, row in annot_df[annot_df['video_path'] == video_path].iterrows()]
-        breakpoint()
+        # breakpoint()
         profiler.start()
         pred_segments = get_segments(f"{path_to_videos}/{video_path}") # TODO need to swap this with the latest segmenter
         processing_times.append(profiler.stop())
         print("processing time:", processing_times[-1])
-        breakpoint()
+        # breakpoint()
         # matching process
         matched_segments = {}
         unmatched_pred_segments = []
         unmatched_gt_segments = []
         for pred_seg_idx, segment in enumerate(pred_segments):
-            matched_gt_segment, iou = segment_gt_matching(segment, gt_segments)
-            if matched_segments[matched_gt_segment]['highest_iou'] < iou:
-                unmatched_pred_segments.append(matched_segments[matched_gt_segment]['pred_seg_idx'])
-                matched_segments[matched_gt_segment] = {'pred_seg_idx': pred_seg_idx, 'highest_iou': iou}
+            pred_cat = segment[-1]
+            pred_segment_time = segment[:-1]
+            gt_segment_idx, iou = segment_gt_matching(pred_segment_time, gt_segments)
+            if gt_segment_idx not in matched_segments:
+                matched_segments[gt_segment_idx] = {'pred_seg_idx': pred_seg_idx, 'highest_iou': iou}
+
+            elif matched_segments[gt_segment_idx]['highest_iou'] < iou:
+                unmatched_pred_segments.append(matched_segments[gt_segment_idx]['pred_seg_idx'])
+                matched_segments[gt_segment_idx] = {'pred_seg_idx': pred_seg_idx, 'highest_iou': iou}
 
         for gt_seg_idx, segment in enumerate(gt_segments):
             if gt_seg_idx not in matched_segments:
                 unmatched_gt_segments.append(gt_seg_idx)
-        breakpoint()
+        # compute metrics like that quantify undersegmentation and misclassification and precision (+200ms should be okay error)
         break
