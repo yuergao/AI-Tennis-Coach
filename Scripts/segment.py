@@ -397,31 +397,3 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                                     last_selected_frame = i  # Update the last selected frame
 
     return matching_frames
-
-
-
-
-
-
-
-
-'''
-# Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
-def forehand_end_criteria1(orientation, i):
-
-    # Ensure the entire right arm is on the left side of the right shoulder
-    arm_on_right_side = orientation["rw_x"] < orientation["rs_x"] 
-    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
-
-    # Ensure the left hand is to the left of the right shoulder
-    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
-    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
-
-    # Combine all criteria (can be weighted if necessary)
-    total_score = arm_on_right_side_score + left_hand_position_score
-    if total_score < float("inf"):
-        pass
-        #print(f"frame{i}: {total_score}")  # Debugging output
-    return total_score
-
-'''
