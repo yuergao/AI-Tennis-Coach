@@ -3,6 +3,7 @@ from video_utils import extract_keypoints_from_video
 import pandas as pd
 import time
 import cv2
+import argparse
 
 class Profiler:
     def __init__(self, print_name=False):
@@ -149,9 +150,15 @@ def compute_metrics(time_profiles, gt_segments, gt_stroke_cats, pred_segments, m
         classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred_segments)
 
 if __name__ == '__main__':
-    annotation_path = '../Annotations/annotations.csv'
-    path_to_videos = '../Annotations/videos'
-    annot_df = pd.read_csv(annotation_path) # video_path	start_time	end_time	stroke_cat
+    parser = argparse.ArgumentParser(description="Play a video at 0.5x speed and show timestamps.")
+    parser.add_argument("--video_path", type=str, help="Path to the video file")
+    parser.add_argument("--annotation_path", default='../Annotations/annotations.csv', type=str, help="Path to the video file")
+
+    args = parser.parse_args()
+
+    # annotation_path = '../Annotations/annotations.csv'
+    # path_to_videos = '../Annotations/videos'
+    annot_df = pd.read_csv(args.annotation_path) # video_path	start_time	end_time	stroke_cat
     profiler = Profiler()
     processing_times = []
     for video_path in annot_df['video_path'].unique():    
@@ -160,7 +167,8 @@ if __name__ == '__main__':
         # get the first letter of the stroke category
         gt_stroke_cats = [row['stroke_cat'][0] for _, row in annot_df[annot_df['video_path'] == video_path].iterrows()]
 
-        video_path=f"{path_to_videos}/{video_path}"
+        video_path=f"{args.video_path}/{video_path}"
+        print(video_path)
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             print("Error: Could not open video.")
