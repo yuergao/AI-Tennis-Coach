@@ -1,5 +1,5 @@
 from segment import detect_swing_boundaries
-from video_utils import extract_keypoints_from_video
+from video_utils import extract_keypointsv2_asimg, extract_keypoints_from_video, extract_keypointsv3_asimg, extract_keypointsv4_asimg, extract_keypointsv5_asimg, extract_keypointsv6_asimg
 import pandas as pd
 import time
 import cv2
@@ -75,7 +75,8 @@ def frame_idx_to_ms(frame_idx, fps):
 def get_segments(video_path):
     # load video
     # extract keypoints
-    keypoints, fps = extract_keypoints_from_video(video_path)
+    # keypoints, fps = extract_keypoints_from_video(video_path)
+    keypoints, fps = extract_keypointsv6_asimg(video_path)
     # detect swing boundaries
     forehand_segments, backhand_segments = detect_swing_boundaries(keypoints, fps)
     segments = [*forehand_segments, *backhand_segments] # (start_frame, end_frame), need to add stroke_cat

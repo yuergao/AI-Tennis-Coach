@@ -2,14 +2,68 @@ import os
 import numpy as np
 import cv2
 import shutil
-from mediapipe import solutions as mp_solutions
+# from mediapipe import solutions as mp_solutions
+# import mediapipe as mp
 import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
+VisionRunningMode = mp.tasks.vision.RunningMode
+# when local do `export CPU_ONLY=True``
+use_torch = not (os.getenv("CPU_ONLY", "False").lower() == "true")
 
-mp_pose = mp_solutions.pose
-pose = mp_pose.Pose(
-    model_complexity=2, 
-    min_detection_confidence=0.9, 
-    min_tracking_confidence=0.8)
+if use_torch:
+    import torch
+    gpu_available_torch = torch.cuda.is_available()
+else:
+    gpu_available_torch = False
+print("torch gpu available: ", gpu_available_torch)
+if gpu_available_torch:
+    
+    base_options = python.BaseOptions(model_asset_path='../models/pose_landmarker_full.task',  
+                                  delegate=python.BaseOptions.Delegate.GPU
+    )
+else:
+    base_options = python.BaseOptions(model_asset_path='../models/pose_landmarker_full.task')
+
+PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
+
+options = PoseLandmarkerOptions(
+    base_options=base_options,
+    # test the two options below again, but dropped performance on small dataset
+    # min_pose_detection_confidence=0.9, 
+    # min_tracking_confidence=0.8,
+    running_mode=VisionRunningMode.VIDEO,
+    output_segmentation_masks=False # also add detection and tracking confidence threshold
+)
+
+detector = vision.PoseLandmarker.create_from_options(options)
+
+# mp_pose = mp_solutions.pose
+# pose = mp_pose.Pose(
+#     model_complexity=2, 
+#     min_detection_confidence=0.9, 
+#     min_tracking_confidence=0.8)
+
+def extract_frames_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+    frames = []
+    timestamps = []
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    i = 0
+    while cap.isOpened():
+        
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # i+=1
+        timestamps.append(cap.get(cv2.CAP_PROP_POS_MSEC))
+        # Convert the BGR image to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frames.append(frame_rgb)
+        
+                
+    cap.release()
+    return np.array(frames), timestamps, fps
 
 # called by driver in pipeline 1  
 def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
@@ -114,7 +168,7 @@ def extract_keypoints_from_video(video_path):
         
         # If landmarks are detected
         if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark
+            landmarks = results.pose_landmarks.landmark # todo remove the last landmark
             # Collect keypoints (x, y, z coordinates)
             frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
             keypoints.append(frame_keypoints)
@@ -122,4 +176,109 @@ def extract_keypoints_from_video(video_path):
             keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
                 
     cap.release()
+    return np.array(keypoints), fps
+
+def extract_keypointsv2_asimg(video_path):
+    frames, timestamps, fps = extract_frames_video(video_path)
+    keypoints = []
+    for frame in frames:
+        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+        result = detector.detect(img).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        # copied from extract_keypoints_from_video
+        if result:
+            landmarks = result[0]
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+
+    return np.array(keypoints), fps
+
+def extract_keypointsv3_asimg(video_path):
+    cap = cv2.VideoCapture(video_path)
+    keypoints = []
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    while cap.isOpened():
+        
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Convert the BGR image to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+        result = detector.detect(img).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        # copied from extract_keypoints_from_video
+        if result:
+            landmarks = result[0]
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+
+    return np.array(keypoints), fps
+
+
+def extract_keypointsv4_asimg(video_path):
+    frames, timestamps, fps = extract_frames_video(video_path)
+    keypoints = []
+    
+    for frame, timestamp in zip(frames, timestamps):
+        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
+        result = detector.detect_for_video(img, int(timestamp)).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        # copied from extract_keypoints_from_video
+        if result:
+            landmarks = result[0]
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+
+    return np.array(keypoints), fps
+
+
+def extract_keypointsv5_asimg(video_path):
+    # fails
+    frames, timestamps, fps = extract_frames_video(video_path)
+    keypoints = []
+    img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frames)
+
+    for _, timestamp in zip(frames, timestamps):
+        result = detector.detect_for_video(img, int(timestamp)).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        breakpoint()
+        # copied from extract_keypoints_from_video
+        if result:
+            landmarks = result[0]
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+
+    return np.array(keypoints), fps
+
+def extract_keypointsv6_asimg(video_path):
+    cap = cv2.VideoCapture(video_path)
+    keypoints = []
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    while cap.isOpened():
+        
+        ret, frame = cap.read()
+        if not ret:
+            break
+        # Convert the BGR image to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        # copied from extract_keypoints_from_video
+        if result:
+            landmarks = result[0]
+            # Collect keypoints (x, y, z coordinates)
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+            keypoints.append(frame_keypoints)
+        else:
+            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
+
     return np.array(keypoints), fps
