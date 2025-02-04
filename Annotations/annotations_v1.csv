@@ -1,11 +1,66 @@
-video_path,start_time,end_time,stroke_cat,,,
-Amateur/insta1.mp4,00:00:00:000,00:00:00:600,backhand,,,
-Amateur/insta1.mp4,00:00:01:466,00:00:02:766,forehand,,,
-Amateur/insta1.mp4,,,,,,
-Amateur/insta1.mp4,,,,,,
-Amateur/insta1.mp4,,,,,,
-Amateur/insta1.mp4,,,,,,
-Amateur/insta1.mp4,,,,,,"Amateur/audrey9.mp4     Amateur/claire1.mp4
-Amateur/audrey5.mp4     Amateur/charles1.MP4    Amateur/insta1.MP4"
-Amateur/insta1.mp4,,,,,,
-Amateur/insta1.mp4,,,,,,
+video_path,start_time,end_time,stroke_cat,discard,special,video info
+Amateur/insta1.mp4,00:00:00:000,00:00:00:600,forehand,,,
+Amateur/insta1.mp4,00:00:01:466,00:00:02:800,forehand,,,
+Amateur/insta1.mp4,00:00:03:933,00:00:05:500,forehand,,,
+Amateur/insta1.mp4,00:00:06:366,00:00:07:866,forehand,,,
+Amateur/insta1.mp4,00:00:09:133,00:00:10:300,forehand,,,
+Amateur/insta1.mp4,00:00:11:333,00:00:12:833,forehand,,,
+Amateur/insta1.mp4, 00:00:14:233,00:00:15:400,forehand,,,
+Amateur/insta1.mp4, 00:00:16:433, 00:00:17:833,forehand,,,
+Amateur/audrey4.mp4,00:00:08:133,00:00:10:368,backhand,,,
+Amateur/audrey4.mp4,00:00:12:168,00:00:14:368,forehand,,,
+Amateur/audrey4.mp4,00:00:15:535,00:00:17:201,forehand,,,
+Amateur/audrey4.mp4,00:00:32:670,00:00:34:803,forehand,,,
+Amateur/audrey4.mp4,00:00:36:670,00:00:38:403,backhand,,,
+Amateur/audrey4.mp4,00:00:40:570,00:00:42:603,backhand,,,
+Amateur/audrey4.mp4,00:00:44:205,00:00:46:205,backhand,yes,,
+Amateur/charles1.mp4,00:00:00:100,00:00:01:433,forehand,,,
+Amateur/charles1.mp4,00:00:02:600,00:00:04:500,backhand,,backhand slice,
+Amateur/charles1.mp4,00:00:05:766, 00:00:07:066,forehand,,,
+Amateur/charles1.mp4,00:00:08:233,00:00:09:466,backhand,,,
+Amateur/charles1.mp4,00:00:10:900,00:00:12:066,backhand,,,
+Amateur/charles1.mp4,00:00:13:100,00:00:14:233,forehand,,,
+Amateur/claire1.mp4,00:00:01:666,00:00:02:533,forehand,,"forehand feed, rotated 90 degree left portrait only on quicktime though was fine in viewer",
+Amateur/claire1.mp4, 00:00:03:733,00:00:05:566,backhand,,,
+Amateur/claire1.mp4,00:00:10:468,00:00:12:268,forehand,,,
+Amateur/claire1.mp4,00:00:13:601,00:00:15:735,backhand,,goes slightly out of frame but start and end are in frame,
+Amateur/claire1.mp4,00:00:18:435,00:00:19:968,backhand,,sloppy/slice,
+Amateur/claire1.mp4, 00:00:21:635,00:00:23:635,forehand,yes,goes out of frame for start and finish,
+Amateur/claire1.mp4,00:00:36:036,00:00:37:403,backhand,,,
+Amateur/claire1.mp4,00:00:40:803,00:00:41:470,forehand,,forehand feed,
+Amateur/claire1.mp4,00:00:43:438,00:00:44:671,backhand,,,
+Amateur/claire1.mp4,00:01:21:541,00:01:23:041,forehand,,,
+Amateur/audrey9.mp4,00:00:04:636,00:00:05:986,forehand,,forehand feed,
+Amateur/audrey9.mp4,00:00:07:571,00:00:09:140,forehand,,,
+Amateur/audrey9.mp4,00:00:10:640,00:00:12:208,forehand,,,
+Amateur/audrey9.mp4,00:00:13:526,00:00:15:443,forehand,,,
+Amateur/audrey9.mp4,00:00:17:361,00:00:19:063,forehand,,,
+Amateur/audrey9.mp4,00:00:21:465,00:00:22:781,forehand,,,
+Amateur/audrey9.mp4,00:00:24:700,00:00:26:318,forehand,,,
+Amateur/audrey9.mp4,00:00:29:036,00:00:29:720,forehand,,,
+Amateur/audrey9.mp4,00:00:31:271,00:00:33:156,forehand,,,
+Amateur/audrey9.mp4,00:00:34:523,00:00:37:208,forehand,,,
+Amateur/audrey9.mp4,00:00:39:660,00:00:41:028,forehand,,,
+Amateur/audrey9.mp4,00:00:42:580,00:00:44:446,forehand,,,
+Amateur/audrey9.mp4,00:00:46:665,00:00:48:383,backhand,,backhand slice,
+Amateur/audrey9.mp4,00:01:00:391,00:01:02:226,backhand,,,
+Amateur/audrey9.mp4,00:01:04:261,00:01:05:478,forehand,,,
+Amateur/audrey9.mp4,00:01:07:330,00:01:09:080,forehand,,past 1:09 there are volleys,
+Amateur/arushi1.mp4,00:00:01:700,00:00:03:033,forehand,,forehand feed,landscape and angled
+Amateur/arushi1.mp4,00:00:05:200,00:00:06:466,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:08:166,00:00:09:633,backhand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:11:500,00:00:13:167,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:14:767,00:00:16:333,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:18:500,00:00:20:100,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:21:600,00:00:24:500,forehand,yes,out of frame,landscape and angled
+Amateur/arushi1.mp4,00:00:25:500,00:00:27:400,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:29:267,00:00:30:834,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:33:067,00:00:34:400,forehand,,,landscape and angled
+Amateur/arushi1.mp4,00:00:35:900,00:00:37:467,forehand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:08:633,00:00:10:566,backhand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:12:233,00:00:13:667,forehand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:19:067,00:00:21:567,forehand,,forehand feed,landscape and angled
+Amateur/arushi2.mp4,00:00:23:600,00:00:24:667,forehand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:27:667,00:00:29:000,forehand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:30:534,00:00:32:167,backhand,,,landscape and angled
+Amateur/arushi2.mp4,00:00:33:867, 00:00:35:067,backhand,,,landscape and angled
