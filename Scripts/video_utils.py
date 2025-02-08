@@ -2,14 +2,16 @@ import os
 import numpy as np
 import cv2
 import shutil
-# from mediapipe import solutions as mp_solutions
-# import mediapipe as mp
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
+from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions
+from mediapipe.framework.formats import image_format_pb2
+from mediapipe.python.solution_base import SolutionBase
+
 VisionRunningMode = mp.tasks.vision.RunningMode
 # when local do `export CPU_ONLY=True``
-use_torch = not (os.getenv("CPU_ONLY", "False").lower() == "true")
+use_torch = not (os.getenv("CPU_ONLY", "False").lower() == "False")
 
 if use_torch:
     import torch
@@ -23,20 +25,22 @@ if gpu_available_torch:
                                   delegate=python.BaseOptions.Delegate.GPU
     )
 else:
-    base_options = python.BaseOptions(model_asset_path='../models/pose_landmarker_full.task')
+    base_options = python.BaseOptions(model_asset_path='./models/pose_landmarker_full.task')
 
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 
 options = PoseLandmarkerOptions(
     base_options=base_options,
     # test the two options below again, but dropped performance on small dataset
-    # min_pose_detection_confidence=0.9, 
-    # min_tracking_confidence=0.8,
+    min_pose_detection_confidence=0.8, 
+    min_tracking_confidence=0.7,
     running_mode=VisionRunningMode.VIDEO,
     output_segmentation_masks=False # also add detection and tracking confidence threshold
 )
 
 detector = vision.PoseLandmarker.create_from_options(options)
+landmarker = PoseLandmarker.create_from_options(options)
+
 
 # mp_pose = mp_solutions.pose
 # pose = mp_pose.Pose(
@@ -66,7 +70,7 @@ def extract_frames_video(video_path):
     return np.array(frames), timestamps, fps
 
 # called by driver in pipeline 1  
-def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
+def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=False):
     """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -150,6 +154,111 @@ def clear_output_folder(output_folder):
                 os.remove(file_path)
             elif os.path.isdir(file_path):
                 shutil.rmtree(file_path)  # Remove directories if any
+
+def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=False):
+    """Extract a segment of the video based on frame indices with optional pose detection lines using the new API."""
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)  # Ensure output directory exists
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("Error: Could not open video.")
+        return
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+
+    if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
+        if end_frame >= total_frames:
+            end_frame = total_frames - 1
+        else:
+            print(f"Invalid frame range: start_frame={start_frame}, end_frame={end_frame}, total_frames={total_frames}")
+            return
+
+    # Set up video writer with the same dimensions and FPS as input
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+
+    # Jump to the start frame
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    frame_idx = start_frame
+    print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
+
+    while frame_idx <= end_frame:
+        ret, frame = cap.read()
+        if not ret:
+            print(f"Frame {frame_idx} could not be read, ending extraction.")
+            break
+
+        if draw_pose:
+            # Convert frame to RGB for MediaPipe processing
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            mp_frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+
+            # Convert frame index to timestamp in microseconds
+            timestamp_us = int((frame_idx / fps) * 1_000_000)
+
+            # Process frame using the new PoseLandmarker API
+            results = landmarker.detect_for_video(mp_frame, timestamp_us)
+
+            # Draw pose landmarks if detected
+            if results.pose_landmarks:
+                for person_landmarks in results.pose_landmarks:
+                    for landmark in person_landmarks:
+                        x, y = int(landmark.x * width), int(landmark.y * height)
+                        cv2.circle(frame, (x, y), 2, (0, 255, 0), -1)  # Green keypoints
+
+        # Write frame (annotated or original) to output video
+        out.write(frame)
+
+        # Ensure frame index always increases
+        frame_idx += 1  
+
+    cap.release()
+    out.release()
+    print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
+
+
+def new_extract_keypoints_from_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print(f"Error: Could not open video at {video_path}")
+        return None, None
+
+    keypoints = []
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_index = 0  # Track frame index for video mode
+    
+    while cap.isOpened():
+        ret, frame = cap.read()
+        breakpoint()
+        if not ret:
+            break
+        
+        # Convert the BGR image to RGB
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # Convert to mp.Image
+        mp_frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+
+        # Use detect_for_video() for video processing
+        results = landmarker.detect_for_video(mp_frame, frame_index)
+
+        if results.pose_world_landmarks:
+            landmarks = results.pose_world_landmarks[0]  # Remove the last landmark
+            
+            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
+        else:
+            frame_keypoints = [(None, None, None)] * 33  # Adjusted for removed landmark
+
+        keypoints.append(frame_keypoints)
+        frame_index += 1  # Increment frame index for VIDEO processing
+
+    cap.release()
+    return np.array(keypoints), fps
+
 
 # Called by driver
 def extract_keypoints_from_video(video_path):
