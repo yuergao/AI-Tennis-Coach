@@ -3,6 +3,9 @@ import numpy as np
 import cv2
 import shutil
 import mediapipe as mp
+import subprocess
+import struct
+import time
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions
@@ -70,7 +73,7 @@ def extract_frames_video(video_path):
     return np.array(frames), timestamps, fps
 
 # called by driver in pipeline 1  
-def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=False):
+def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
     """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -184,6 +187,8 @@ def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, 
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
     frame_idx = start_frame
+    last_timestamp = 0  # Keep track of last timestamp to ensure increasing order
+
     print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
 
     while frame_idx <= end_frame:
@@ -197,8 +202,9 @@ def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, 
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-            # Convert frame index to timestamp in microseconds
-            timestamp_us = int((frame_idx / fps) * 1_000_000)
+            # Generate a strictly increasing timestamp
+            timestamp_us = max(last_timestamp + 1, int((frame_idx / fps) * 1_000_000))  # Ensure monotonic increase
+            last_timestamp = timestamp_us  # Update last timestamp
 
             # Process frame using the new PoseLandmarker API
             results = landmarker.detect_for_video(mp_frame, timestamp_us)
@@ -222,6 +228,7 @@ def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, 
 
 
 def new_extract_keypoints_from_video(video_path):
+    convert_video_to_mp4v(video_path)
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         print(f"Error: Could not open video at {video_path}")
@@ -233,7 +240,6 @@ def new_extract_keypoints_from_video(video_path):
     
     while cap.isOpened():
         ret, frame = cap.read()
-        breakpoint()
         if not ret:
             break
         
@@ -369,6 +375,7 @@ def extract_keypointsv5_asimg(video_path):
     return np.array(keypoints), fps
 
 def extract_keypointsv6_asimg(video_path):
+    convert_video_to_mp4v(video_path)
     cap = cv2.VideoCapture(video_path)
     keypoints = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -391,3 +398,111 @@ def extract_keypointsv6_asimg(video_path):
             keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
 
     return np.array(keypoints), fps
+
+
+
+def convert_video_to_mp4v(input_path):
+    """Convert a video to MP4 (MPEG-4 `mp4v`) format using FFmpeg, ensuring overwrite works."""
+    codec = get_video_codec(input_path)
+    if '4' in codec:
+        return
+    
+    temp_output_path = input_path.replace(".mp4", "_converted.mp4")
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",  
+        "-i", input_path,  
+        "-c:v", "mpeg4", "-q:v", "5",  
+        "-c:a", "aac", "-b:a", "128k",  
+        temp_output_path  
+    ]
+
+    print(f"Converting '{input_path}' to MP4 format...")
+    
+    try:
+        subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+        print(f"Conversion complete: {temp_output_path}")
+
+        # Ensure FFmpeg has finished writing before replacing the file
+        if wait_for_file_ready(temp_output_path) and wait_until_opencv_can_open(temp_output_path):
+            os.remove(input_path)  
+            os.rename(temp_output_path, input_path)  
+            print(f"Replaced original file with converted version: {input_path}")
+            return True
+        else:
+            print(f"Error: Converted file '{temp_output_path}' may be incomplete.")
+            return False
+
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpeg Error: {e.stderr}")
+        return False
+    
+    
+def wait_for_file_ready(filepath, timeout=3, check_interval=0.5):
+    """Wait until the file is fully written, flushed, and can be accessed."""
+    prev_size = -1
+    elapsed_time = 0
+
+    while elapsed_time < timeout:
+        if os.path.exists(filepath):
+            current_size = os.path.getsize(filepath)
+
+            # If size is stable, try opening it in read mode
+            if current_size == prev_size and current_size > 0:
+                try:
+                    with open(filepath, "rb") as f:
+                        os.fsync(f.fileno())  # Force OS to write buffered data to disk
+                    print(f"File '{filepath}' is fully written and flushed.")
+                    return True  # File is fully written and ready
+                except IOError:
+                    print(f"File '{filepath}' exists but is not accessible yet.")
+            
+            prev_size = current_size
+        
+        time.sleep(check_interval)
+        elapsed_time += check_interval
+
+    print(f"Warning: File '{filepath}' did not become ready within {timeout} seconds.")
+    return False
+
+
+def wait_until_opencv_can_open(video_path, timeout=3, check_interval=0.5):
+    """Wait until OpenCV can successfully open the video."""
+    elapsed_time = 0
+
+    while elapsed_time < timeout:
+        cap = cv2.VideoCapture(video_path)
+        if cap.isOpened():
+            cap.release()
+            print(f"OpenCV can now read '{video_path}'. Ready for processing.")
+            return True  # Video is fully written and accessible
+        cap.release()
+
+        time.sleep(check_interval)
+        elapsed_time += check_interval
+
+    print(f"Warning: OpenCV could not open '{video_path}' within {timeout} seconds.")
+    return False
+
+def get_video_codec(video_path):
+    """Detects the video codec using FFmpeg."""
+    ffmpeg_cmd = [
+        "ffmpeg", "-i", video_path
+    ]
+
+    try:
+        # Capture FFmpeg stderr output (where codec info is printed)
+        result = subprocess.run(ffmpeg_cmd, stderr=subprocess.PIPE, text=True, check=False)
+        
+        # Find codec info in the output
+        for line in result.stderr.split("\n"):
+            if "Video:" in line:
+                codec_info = line.split("Video:")[1].split(",")[0].strip()
+                print(f"Detected Video Codec: {codec_info}")
+                return codec_info
+        
+        print("Could not detect codec.")
+        return None
+    except Exception as e:
+        print(f"Error detecting codec: {e}")
+        return None

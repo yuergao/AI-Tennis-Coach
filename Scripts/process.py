@@ -24,7 +24,7 @@ pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 
 
-test_paths = [('audrey',5)] # <<<<<<<<<<<<<<<<<<<<<<<
+test_paths = [('audrey',4)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
     for player, player_vid_idx in test_paths:
@@ -41,7 +41,7 @@ if pipeline1:
         #extract_motion_segment(video_path, start_frame, end_frame, output_video)
         
         #Extract keypoints from the video
-        keypoints, fps = extract_keypoints_from_video(video_path)
+        keypoints, fps = extract_keypointsv6_asimg(video_path)
         print(f"Finished keypoint extraction for {player}{player_vid_idx}.")
 
         # Detect swing boundaries
@@ -60,7 +60,7 @@ if pipeline1:
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
-                new_extract_motion_segment(video_path, start_frame, end_frame, output_video)
+                extract_motion_segment(video_path, start_frame, end_frame, output_video)
                 
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
