@@ -104,7 +104,7 @@ def single_match(gt_segments, pred_segments, min_iou=0.1):
 
     return matched_segments, unmatched_pred_segments, unmatched_gt_segments
 
-def classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred_segments):
+def classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred_segments, verbose=False):
     # iterate over matched segments dict
     class_count_dict = {'f':0, 'b':0}
     class_count_dict_gt = {'f':0, 'b':0}
@@ -118,37 +118,65 @@ def classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred
 
 
     # print the classification precision
+    
     for key in class_count_dict:
         if class_count_dict_gt[key] == 0:
-            print("No precision calculated for class, due to no gt segments for", key)
+            # precision_dict[key] = 0
+            if verbose:
+                print("No precision calculated for class, due to no gt segments for", key)
         else:
-            print(f"Precision for {key}: {class_count_dict[key]/class_count_dict_gt[key]}")
+            # precision_dict[key] = class_count_dict[key]/class_count_dict_gt[key]
+            if verbose:
+                print(f"Precision for {key}: {class_count_dict[key]/class_count_dict_gt[key]:.2f}")
+    return [class_count_dict, class_count_dict_gt]
 
-def compute_metrics(time_profiles, gt_segments, gt_stroke_cats, pred_segments, matching_algorithm):
+def compute_metrics(time_profiles, gt_segments, gt_stroke_cats, pred_segments, matching_algorithm, verbose=False):
     # How fast is our system?
-    # Average speed -> summation over segmentation time / summation over duration times
-    avg_speed = sum([x[1] for x in time_profiles.record]) / sum([x[0] for x in time_profiles.record]) 
-    print(f"Average processing time {avg_speed:.2f} s/frame")
+    # Average speed -> FPS (frames processed per second)
+    avg_speed = sum([x[0] for x in time_profiles.record])  / sum([x[1] for x in time_profiles.record]) 
+    if verbose:
+        print(f"Average processing time {avg_speed:.2f} frames/second")
+    results = {}
 
     for iou in [0.1, 0.3, 0.5]:
-        print(f"---------------------- IOU THRESHOLD: {iou} ----------------------")
+        if verbose:
+            print(f"---------------------- IOU THRESHOLD: {iou} ----------------------")
         matched_segments, unmatched_pred_segments, unmatched_gt_segments = matching_algorithm(gt_segments, pred_segments, min_iou = iou)
-        # How many ground truth segments get matched (at different thresholds iou)? 
-        print(f"Number of ground truth segments matched at iou {iou}: {100*len(matched_segments)/len(gt_segments)}\%")
-        # How many predicted segments have an overlap with the ground truth segment  (at different thresholds iou)?
-        print(f"Number of predicted segments matched at iou {iou}: {100*len(matched_segments)/len(pred_segments)}\%")
-        # # of segments predicted vs ground truth
-        print(f"# of segments predicted: {len(pred_segments)} vs # of ground truth segments: {len(gt_segments)}")
-        # Observe the delta (this will point to an undersegmentation problem or oversegmentation problem)
-        print(f"Delta: {len(pred_segments) - len(gt_segments)}")
 
-        # average length of predicted segments vs ground truth segments
+        matched_gt_percent = 100*len(matched_segments) / len(gt_segments)
+        matched_pred_percent = 100 * len(matched_segments) / len(pred_segments)
+        delta = len(pred_segments) - len(gt_segments)
+
         avg_pred_segment_length = sum([x[1] - x[0] for x in pred_segments]) / len(pred_segments)
         avg_gt_segment_length = sum([x[1] - x[0] for x in gt_segments]) / len(gt_segments)
-        print(f"Average predicted segment length: {avg_pred_segment_length:.2f} vs average ground truth segment length: {avg_gt_segment_length:.2f}")
+
+        
+        if verbose:
+
+            # How many ground truth segments get matched (at different thresholds iou)? 
+            print(f"Number of ground truth segments matched at iou {iou}: {matched_gt_percent}\%")
+            # How many predicted segments have an overlap with the ground truth segment  (at different thresholds iou)?
+            print(f"Number of predicted segments matched at iou {iou}: {matched_pred_percent}\%")
+            # # of segments predicted vs ground truth
+            print(f"# of segments predicted: {len(pred_segments)} vs # of ground truth segments: {len(gt_segments)}")
+            # Observe the delta (this will point to an undersegmentation problem or oversegmentation problem)
+            print(f"Delta: {len(pred_segments) - len(gt_segments)}")
+            print(f"Average predicted segment length: {avg_pred_segment_length:.2f} vs average ground truth segment length: {avg_gt_segment_length:.2f}")
 
         # How accurate is the classification?
-        classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred_segments)
+        precision_count_dict = classification_metrics(time_profiles, matched_segments, gt_stroke_cats, pred_segments, verbose=verbose)
+
+        # Store results for this IoU threshold
+        results[iou] = {
+            "total_matched": len(matched_segments),
+            "num_pred_segments": len(pred_segments),
+            "num_gt_segments": len(gt_segments),
+            "delta_per_video": delta,
+            "avg_pred_segment_length": avg_pred_segment_length*len(pred_segments),
+            "avg_gt_segment_length": avg_gt_segment_length*len(gt_segments),
+            "precision_count_dict": precision_count_dict
+        }
+    return avg_speed, results
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Play a video at 0.5x speed and show timestamps.")
@@ -162,6 +190,19 @@ if __name__ == '__main__':
     annot_df = pd.read_csv(args.annotation_path) # video_path	start_time	end_time	stroke_cat
     profiler = Profiler()
     processing_times = []
+    results = []
+    speeds = []
+    aggregated_results = {iou: {
+        "total_matched": 0,
+        "num_pred_segments": 0,
+        "num_gt_segments": 0,
+        "delta": 0,
+        "avg_pred_segment_length": 0,
+        "avg_gt_segment_length": 0,
+        "correct_pred_counts": [],  # This needs special handling
+        "gt_class_counts": []  # This needs special handling
+    } for iou in [0.1, 0.3, 0.5]}
+
     for video_path in annot_df['video_path'].unique():    
 
         gt_segments = [(convert_ts_ms(row['start_time']), convert_ts_ms(row['end_time'])) for _, row in annot_df[annot_df['video_path'] == video_path].iterrows()]
@@ -182,6 +223,41 @@ if __name__ == '__main__':
         processing_times.append(profiler.stop())
         print("processing time:", processing_times[-1])
 
-        compute_metrics(profiler, gt_segments, gt_stroke_cats, pred_segments, single_match)
+        avg_speed, results_for_video = compute_metrics(profiler, gt_segments, gt_stroke_cats, pred_segments, single_match, verbose=False)
+        speeds.append(avg_speed)
+
+        for iou in [0.1, 0.3, 0.5]:
+            if iou in results_for_video:
+                aggregated_results[iou]["total_matched"] += results_for_video[iou]["total_matched"]
+                aggregated_results[iou]["num_pred_segments"] += results_for_video[iou]["num_pred_segments"]
+                aggregated_results[iou]["num_gt_segments"] += results_for_video[iou]["num_gt_segments"]
+                aggregated_results[iou]["delta"] += results_for_video[iou]["delta_per_video"]
+                aggregated_results[iou]["avg_pred_segment_length"] += results_for_video[iou]["avg_pred_segment_length"]
+                aggregated_results[iou]["avg_gt_segment_length"] += results_for_video[iou]["avg_gt_segment_length"]
+                aggregated_results[iou]["correct_pred_counts"].append(results_for_video[iou]["precision_count_dict"][0])
+                aggregated_results[iou]["gt_class_counts"].append(results_for_video[iou]["precision_count_dict"][1])
+
+        results.append(results_for_video)
         
-        break
+    
+    print("Average throughput(fps):", sum(speeds) / len(speeds))
+    print(f"Average predicted segment length: {aggregated_results[0.1]['avg_pred_segment_length'] / aggregated_results[0.1]['num_pred_segments']:.2f} vs average ground truth segment length: {aggregated_results[iou]['avg_gt_segment_length'] / aggregated_results[iou]['num_gt_segments']:.2f}")
+    print(f"# of segments predicted: {aggregated_results[0.1]['num_pred_segments']} vs # of ground truth segments: {aggregated_results[0.1]['num_gt_segments']}")
+    print(f"Delta: {aggregated_results[0.1]['delta']}")
+
+    for iou in [0.1, 0.3, 0.5]:
+        print(f"---------------------- IOU THRESHOLD: {iou} ----------------------")
+        print(f"Percent of ground truth segments matched at iou {iou}: {100 * aggregated_results[iou]['total_matched']/ aggregated_results[iou]['num_gt_segments']}\%")
+        print(f"Percent of predicted segments matched at iou {iou}: {100 * aggregated_results[iou]['total_matched'] / aggregated_results[iou]['num_pred_segments']}\%")
+        print("Precision counts:")
+        for key in ['f', 'b']:
+            # breakpoint()
+            precision_num = sum([x[key] for x in aggregated_results[iou]['correct_pred_counts']])
+            prec_denom = sum([x[key] for x in aggregated_results[iou]['gt_class_counts']])
+            if prec_denom == 0:
+                print("No precision calculated for class, due to no gt segments for", key)
+            else:
+                print(f"Precision for {key}: {precision_num/prec_denom:.2f}")
+        
+        print("\n")
+    

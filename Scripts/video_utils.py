@@ -376,6 +376,8 @@ def extract_keypointsv5_asimg(video_path):
 
 def extract_keypointsv6_asimg(video_path):
     convert_video_to_mp4v(video_path)
+    detector = vision.PoseLandmarker.create_from_options(options)  # have to reinitialize the detector due to detect_from_video being video specific and no ability to flush the buffer
+
     cap = cv2.VideoCapture(video_path)
     keypoints = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -387,7 +389,18 @@ def extract_keypointsv6_asimg(video_path):
         # Convert the BGR image to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+        if timestamp_ms < 0:
+            frame_number = cap.get(cv2.CAP_PROP_POS_FRAMES)
+            fps = cap.get(cv2.CAP_PROP_FPS)
+            timestamp_ms = int((frame_number / fps) * 1000)
+
+        result = None
+        try:
+            result = detector.detect_for_video(img, timestamp_ms).pose_world_landmarks # pose_landark; needs further testing s # pose_landmarks are not in world coordinates
+        except:
+            print(f"skipping frame for {video_path} and timestamp {timestamp_ms}")
+
         # copied from extract_keypoints_from_video
         if result:
             landmarks = result[0]
