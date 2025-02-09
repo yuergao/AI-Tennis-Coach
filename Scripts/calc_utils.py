@@ -135,20 +135,19 @@ def calculate_body_orientation(keypoints):
 
 def calculate_average_wrist_velocity(right_wrist_coords, fps, shoulder_to_hip_length):
     """
-    Calculate the average of the top 5 wrist velocities weighted by magnitude for a given list of right wrist coordinates,
-    using x, y, and z axes, and normalizing by shoulder-to-hip length. Only consider frames where z increases.
-    Additionally, determine if the wrist generally moves to the right (positive x direction) and both y and z increase overall.
+    Calculate the highest wrist velocity where z increases, normalized by shoulder-to-hip length.
+    Also determines if the wrist generally moves to the right (positive x direction) and whether both y and z increase overall.
 
     Parameters:
         right_wrist_coords (list): List of right wrist coordinates [(x, y, z), ...] for each frame.
         fps (int): Frames per second of the video.
-        shoulder_to_hip_length (float): Length from shoulder to hip for normalization.
+        shoulder_to_hip_length (float): Distance between the shoulder and hip, used for normalization.
 
     Returns:
         tuple: (float, bool, bool)
-            - The average of the top 5 weighted wrist velocities where z increases, normalized by shoulder-to-hip length.
-            - A boolean indicating if the wrist generally moves to the right (True) or to the left (False).
-            - A boolean indicating if both y and z values increase overall (True) or not (False).
+            - The maximum weighted wrist velocity where z increases, normalized by shoulder-to-hip length.
+            - A boolean indicating whether the wrist moves predominantly to the right (True) or left (False).
+            - A boolean indicating whether both y and z values increase overall (True) or not (False).
     """
     if shoulder_to_hip_length <= 0:
         raise ValueError("Shoulder-to-hip length must be greater than 0 for normalization.")
@@ -157,39 +156,42 @@ def calculate_average_wrist_velocity(right_wrist_coords, fps, shoulder_to_hip_le
     cumulative_x_movement = 0
     cumulative_y_movement = 0
     cumulative_z_change = 0
-    time_interval = 1 / fps  # Time interval for every frame
-    normalization_factor = 1 / shoulder_to_hip_length
+    time_interval = 1 / fps  # Time between consecutive frames
+    normalization_factor = 1 / shoulder_to_hip_length  # Normalize motion by body proportion
 
-    for i in range(1, len(right_wrist_coords)):  # Iterate through consecutive frames
+    for i in range(1, len(right_wrist_coords)):  # Iterate through frames sequentially
         if right_wrist_coords[i] is None or right_wrist_coords[i - 1] is None:
-            continue  # Skip frames with missing data
+            continue  # Skip missing frames
 
         # Extract coordinates for the current and previous frames
         x1, y1, z1 = right_wrist_coords[i - 1]
         x2, y2, z2 = right_wrist_coords[i]
 
-        # Update cumulative x-axis, y-axis, and z-axis movement
+        # Track cumulative movement in x, y, and z directions
         cumulative_x_movement += (x2 - x1)
         cumulative_y_movement += (y2 - y1)
         cumulative_z_change += (z2 - z1)
 
-        # Only calculate velocity if z increases in the current frame
+        # Only consider frames where the wrist moves forward in depth (z increases)
         if z2 > z1:
-            # Calculate the change in position (displacement)
+            # Compute displacement (3D distance between two consecutive positions)
             displacement = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2 + (z2 - z1) ** 2)
 
-            # Calculate velocity
+            # Compute velocity (displacement per unit time)
             velocity = (displacement * normalization_factor) / time_interval
 
-            # Weight velocity by magnitude (displacement)
+            # Weight velocity by its displacement magnitude
             weighted_velocity = velocity * displacement
             weighted_velocities.append(weighted_velocity)
 
-    # Determine if wrist generally moves to the right and if y and z increase overall
+    # Determine if wrist movement is generally towards the right
     moves_right = cumulative_x_movement > 0
-    z_and_y_increase = (cumulative_y_movement > 0) and (cumulative_z_change > 0)
 
-    # Return the average of the top 5 weighted velocities, direction of movement, and overall z and y increase
+    # Check if both y and z have a net increase
+    #z_and_y_increase = (cumulative_y_movement > 0) and (cumulative_z_change > 0)
+
+    # Return the highest recorded weighted velocity, movement direction, and overall y/z increase
     max_velocity = np.max(weighted_velocities) if weighted_velocities else 0.0
-    return max_velocity
+    return max_velocity, moves_right
+
 

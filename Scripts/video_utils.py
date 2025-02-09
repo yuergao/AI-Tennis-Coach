@@ -45,12 +45,6 @@ detector = vision.PoseLandmarker.create_from_options(options)
 landmarker = PoseLandmarker.create_from_options(options)
 
 
-# mp_pose = mp_solutions.pose
-# pose = mp_pose.Pose(
-#     model_complexity=2, 
-#     min_detection_confidence=0.9, 
-#     min_tracking_confidence=0.8)
-
 def extract_frames_video(video_path):
     cap = cv2.VideoCapture(video_path)
     frames = []
@@ -375,8 +369,8 @@ def extract_keypointsv5_asimg(video_path):
     return np.array(keypoints), fps
 
 def extract_keypointsv6_asimg(video_path):
-    convert_video_to_mp4v(video_path)
     cap = cv2.VideoCapture(video_path)
+    convert_video_to_mp4v(video_path)
     keypoints = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     while cap.isOpened():
@@ -404,7 +398,7 @@ def extract_keypointsv6_asimg(video_path):
 def convert_video_to_mp4v(input_path):
     """Convert a video to MP4 (MPEG-4 `mp4v`) format using FFmpeg, ensuring overwrite works."""
     codec = get_video_codec(input_path)
-    if '4' in codec:
+    if 'mp' in codec:
         return
     
     temp_output_path = input_path.replace(".mp4", "_converted.mp4")
