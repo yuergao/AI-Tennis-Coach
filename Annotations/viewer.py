@@ -22,7 +22,7 @@ def play_video_slow(video_path):
     frame_duration = int(1000 / fps)  # Frame duration in milliseconds
 
     # Slow playback speed (e.g., 0.5x speed)
-    playback_speed = 0.5
+    playback_speed = 0.25
     slow_duration = int(frame_duration / playback_speed)
 
     paused = False
@@ -41,6 +41,24 @@ def play_video_slow(video_path):
         key = cv2.waitKey(slow_duration)
         if key == ord('q'):  # Quit the video
             break
+        elif key == ord('s'):
+            print("pressed s")
+            paused = True
+            current_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+            formatted_time = format_timestamp(current_timestamp)
+            print(f"Start Timestamp: {formatted_time}")
+        elif key == ord('f'):
+            print("pressed f")
+            print(f"forehand")
+        elif key == ord('b'):
+            print("pressed b")
+            print(f"backhand")
+        elif key == ord('e'):
+            print("pressed e")
+            paused = True
+            current_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))
+            formatted_time = format_timestamp(current_timestamp)
+            print(f"End Timestamp: {formatted_time}")
         elif key == ord('p'):  # Pause or unpause the video
             paused = not paused
             # Get the current timestamp in milliseconds
@@ -48,7 +66,7 @@ def play_video_slow(video_path):
                 current_timestamp = int(cap.get(cv2.CAP_PROP_POS_MSEC))
                 formatted_time = format_timestamp(current_timestamp)
                 
-                print(f"Timestamp: {formatted_time}")
+                # print(f"Timestamp: {formatted_time}")
 
     # Release the video capture and close windows
     cap.release()
