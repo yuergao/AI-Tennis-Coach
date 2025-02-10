@@ -369,6 +369,7 @@ def extract_keypointsv5_asimg(video_path):
     return np.array(keypoints), fps
 
 def extract_keypointsv6_asimg(video_path):
+    detector = vision.PoseLandmarker.create_from_options(options)
     cap = cv2.VideoCapture(video_path)
     convert_video_to_mp4v(video_path)
     keypoints = []
@@ -390,7 +391,7 @@ def extract_keypointsv6_asimg(video_path):
             keypoints.append(frame_keypoints)
         else:
             keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-
+    cap.release()
     return np.array(keypoints), fps
 
 
