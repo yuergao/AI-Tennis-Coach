@@ -1,4 +1,4 @@
-from segment import detect_swing_boundaries
+from segment import detect_swings
 from video_utils import extract_keypointsv2_asimg, extract_keypoints_from_video, extract_keypointsv3_asimg, extract_keypointsv4_asimg, extract_keypointsv5_asimg, extract_keypointsv6_asimg
 import pandas as pd
 import time
@@ -78,9 +78,11 @@ def get_segments(video_path):
     # keypoints, fps = extract_keypoints_from_video(video_path)
     keypoints, fps = extract_keypointsv6_asimg(video_path)
     # detect swing boundaries
-    forehand_segments, backhand_segments = detect_swing_boundaries(keypoints, fps)
-    segments = [*forehand_segments, *backhand_segments] # (start_frame, end_frame), need to add stroke_cat
-    segments = [(frame_idx_to_ms(start_frame, fps), frame_idx_to_ms(end_frame, fps), "f" if i < len(forehand_segments) else "b") for i, (start_frame, end_frame) in enumerate(segments)]
+    forehand_swings, backhand_swings = detect_swings(keypoints, fps)
+    segments = [*forehand_swings, *backhand_swings] # (start_frame, end_frame), need to add stroke_cat
+    # TODO: decide to use frame or frame with padding here
+    segments = [(frame_idx_to_ms(swing.start_frame, fps), frame_idx_to_ms(swing.end_frame, fps), "f" if i < len(forehand_swings) else "b") for i, swing in enumerate(segments)]
+    print(f"Detected {len(forehand_swings)} forehands and {len(backhand_swings)} backhands.")
     return segments
 
 def single_match(gt_segments, pred_segments, min_iou=0.1):

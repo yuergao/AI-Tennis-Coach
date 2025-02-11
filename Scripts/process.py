@@ -45,18 +45,22 @@ if pipeline1:
         print(f"Finished keypoint extraction for {player}{player_vid_idx}.")
 
         # Detect swing boundaries
-        forehand_segments, backhand_segments = detect_swing_boundaries(keypoints, fps)
+        forehand_segments, backhand_segments = detect_swings(keypoints, fps)
         print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
 
         # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(forehand_segments):
+        for idx, forehand in enumerate(forehand_segments):
+            start_frame = forehand.padded_start_frame
+            end_frame = forehand.padded_end_frame
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
                 extract_motion_segment(video_path, start_frame, end_frame, output_video)
 
         # Process each swing and extract video segments
-        for idx, (start_frame, end_frame) in enumerate(backhand_segments):
+        for idx, backhand in enumerate(backhand_segments):
+            start_frame = backhand.padded_start_frame
+            end_frame = backhand.padded_end_frame
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
