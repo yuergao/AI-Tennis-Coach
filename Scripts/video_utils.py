@@ -14,8 +14,8 @@ from mediapipe.python.solution_base import SolutionBase
 
 VisionRunningMode = mp.tasks.vision.RunningMode
 # when local do `export CPU_ONLY=True``
-use_torch = not (os.getenv("CPU_ONLY", "False").lower() == "False")
-
+use_torch = not (os.getenv("CPU_ONLY", "False").lower() == "true")
+print(use_torch)
 if use_torch:
     import torch
     gpu_available_torch = torch.cuda.is_available()
@@ -28,7 +28,7 @@ if gpu_available_torch:
                                   delegate=python.BaseOptions.Delegate.GPU
     )
 else:
-    base_options = python.BaseOptions(model_asset_path='./models/pose_landmarker_full.task')
+    base_options = python.BaseOptions(model_asset_path='../models/pose_landmarker_full.task')
 
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 
