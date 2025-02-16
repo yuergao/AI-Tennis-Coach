@@ -43,7 +43,6 @@ def detect_swings(keypoints, fps):
     orientations = calculate_body_orientation(keypoints)
     forehand_swings = find_matching_swings_forehand(orientations,fps)
     backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings)
-    
     # Look for key aspects of tennis swing based on wrist position
     return [forehand_swings, backhand_swings]
 
@@ -207,8 +206,8 @@ def find_matching_swings_forehand(orientations, fps, threshold=float("inf"), vel
                                     padded_start_frame=max(1, start_frame - fps),
                                     padded_end_frame=min(contact_swing + fps, len(orientations) - 1),
                                     avg_wrist_velocity= avg_wrist_velocity,
-                                    movement = orientations[max(1, start_frame - fps)]['rs_x'] - orientations[contact_swing]['rs_x'],
-                                    fps=fps  # Store FPS in the swing object
+                                    movement = (orientations[max(1, start_frame - fps)]['rs_x'] - orientations[contact_swing]['rs_x']) * 100,
+                                    fps=fps  
                                 )
                                 matching_swings.append(swing)
                                 swing.print_info()
@@ -390,8 +389,8 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=
                                         end_frame=contact_swing,
                                         padded_start_frame = window_start,
                                         padded_end_frame= min(contact_swing + fps, len(orientations) - 1),
-                                        movement = orientations[window_start]['rs_x'] - orientations[contact_swing]['rs_x'],
-                                        fps=fps  # Store FPS in the swing object
+                                        movement = (orientations[window_start]['rs_x'] - orientations[contact_swing]['rs_x']) * 100,
+                                        fps=fps  
                                     )
                                     swing.print_info()
                                     matching_swings.append(swing)

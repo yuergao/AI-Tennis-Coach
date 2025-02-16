@@ -9,8 +9,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 # User inputs
-pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = False  # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline1 = False # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = True  # <<<<<<<<<<<<<<<<<<<<<<<
 extension = '.mp4'
 
 '''
@@ -22,9 +22,10 @@ audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey'
 amature_paths = [('claire',1),('player',1),('player',2),('player',4),('player',6),('player',7),('player',8),('insta',1)]
 pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev',1),('ruud',1),('Djokovic',1),('Minaur',1)]
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
+more_amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
 
-test_paths = [('audrey',4)] # <<<<<<<<<<<<<<<<<<<<<<<
+test_paths = [('federer',1)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
     for player, player_vid_idx in test_paths:
@@ -46,6 +47,7 @@ if pipeline1:
 
         # Detect swing boundaries
         forehand_segments, backhand_segments = detect_swings(keypoints, fps)
+        save_swings_to_json(forehand_segments + backhand_segments, f"{player}/{player_vid}/{player_vid}.json")
         print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
 
         # Process each swing and extract video segments
@@ -71,22 +73,26 @@ if pipeline1:
 ---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
-is_manual = True # <<<<<<<<<<<<<<<<<<<<<<<
+is_manual = False # <<<<<<<<<<<<<<<<<<<<<<<
 swing_type = 'forehand' # <<<<<<<<<<<<<<<<<<<<<<<
 
-player1 = 'player'  # <<<<<<<<<<<<<<<<<<<<<<<
-player1_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
-player1_swing_idx = 3
+player1 = 'audrey'  # <<<<<<<<<<<<<<<<<<<<<<<
+player1_vid_idx = 9 # <<<<<<<<<<<<<<<<<<<<<<<
+player1_swing_idx = 4
 
-player2 = 'djokovic' # <<<<<<<<<<<<<<<<<<<<<<<
+player2 = 'Badosa' # <<<<<<<<<<<<<<<<<<<<<<<
 player2_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
-player2_swing_idx = 5
+player2_swing_idx = 7
 
 player1_vid = f"{player1}{player1_vid_idx}"
 player2_vid = f"{player2}{player2_vid_idx}"
    
 if pipeline2:
     # output 
+    loaded_swings1 = load_swings_from_json(f"{player1}/{player1_vid}/{player1_vid}.json")
+    loaded_swings2 = load_swings_from_json(f"{player2}/{player2_vid}/{player2_vid}.json")
+    
+        
     if is_manual:
         player_compare = f"{player1}_{player2}"
         player_compare_vid = f"{player1_vid}_{player2_vid}"
@@ -115,21 +121,40 @@ if pipeline2:
             for idx1, video1 in enumerate(videos1):
                 if "_fps." in video1:
                     continue  
-                container = av.open(video1)
-                vid1_duration = container.duration / av.time_base
-                min_swing_len_diff = float("inf")
+
+                container1 = av.open(video1)
+                vid1_duration = container1.duration / av.time_base
+
+                min_diff = float("inf")
+                min_vid2 = None
+                min_vid2_idx = -1
+                best_swing2 = None
+                swing1 = loaded_swings1[idx1]
+                
                 for idx2, video2 in enumerate(videos2):
                     if "_fps." in video2:
                         continue
-                    container = av.open(video2)
-                    vid2_duration = container.duration / av.time_base
-                    swing_len_diff = abs(vid2_duration  - vid1_duration)
-                    if swing_len_diff < min_swing_len_diff:
-                        min_swing_len_diff = swing_len_diff
+
+                    container2 = av.open(video2)
+                    vid2_duration = container2.duration / av.time_base
+    
+                    swing2 = loaded_swings2[idx2]
+                   
+                    swing_len_diff = abs(swing2.get_swing_len() - swing1.get_swing_len())
+                    movement_diff = abs(swing2.movement - swing1.movement)
+
+                    # Define a weighted criteria for comparison
+                    total_diff = movement_diff  # Scale movement difference
+                    if total_diff < min_diff:
+                        min_diff = total_diff
                         min_vid2 = video2
                         min_vid2_idx = idx2
-                player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{idx1+1}_{min_vid2_idx+1}"
-                overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
-                comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
-                sync_video_timings(video1, min_vid2, overlay_path, comparison_path, swing_type)
-
+                        best_swing2 = swing2
+                        
+                loaded_swings1[idx1].print_info()
+                best_swing2.print_info()
+                if min_vid2:   
+                    player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{idx1+1}_{min_vid2_idx+1}"
+                    overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
+                    comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
+                    sync_video_timings(video1, min_vid2, overlay_path, comparison_path, swing_type)

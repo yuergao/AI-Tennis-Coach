@@ -41,7 +41,6 @@ options = PoseLandmarkerOptions(
     output_segmentation_masks=False # also add detection and tracking confidence threshold
 )
 
-detector = vision.PoseLandmarker.create_from_options(options)
 landmarker = PoseLandmarker.create_from_options(options)
 
 
@@ -221,157 +220,10 @@ def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, 
     print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
 
 
-def new_extract_keypoints_from_video(video_path):
-    convert_video_to_mp4v(video_path)
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print(f"Error: Could not open video at {video_path}")
-        return None, None
-
-    keypoints = []
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    frame_index = 0  # Track frame index for video mode
-    
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Convert the BGR image to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # Convert to mp.Image
-        mp_frame = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-
-        # Use detect_for_video() for video processing
-        results = landmarker.detect_for_video(mp_frame, frame_index)
-
-        if results.pose_world_landmarks:
-            landmarks = results.pose_world_landmarks[0]  # Remove the last landmark
-            
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-        else:
-            frame_keypoints = [(None, None, None)] * 33  # Adjusted for removed landmark
-
-        keypoints.append(frame_keypoints)
-        frame_index += 1  # Increment frame index for VIDEO processing
-
-    cap.release()
-    return np.array(keypoints), fps
-
-
-# Called by driver
-def extract_keypoints_from_video(video_path):
-    cap = cv2.VideoCapture(video_path)
-    keypoints = []
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # Convert the BGR image to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(frame_rgb)
-        
-        # If landmarks are detected
-        if results.pose_landmarks:
-            landmarks = results.pose_landmarks.landmark # todo remove the last landmark
-            # Collect keypoints (x, y, z coordinates)
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-            keypoints.append(frame_keypoints)
-        else:
-            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-                
-    cap.release()
-    return np.array(keypoints), fps
-
-def extract_keypointsv2_asimg(video_path):
-    frames, timestamps, fps = extract_frames_video(video_path)
-    keypoints = []
-    for frame in frames:
-        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-        result = detector.detect(img).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
-        # copied from extract_keypoints_from_video
-        if result:
-            landmarks = result[0]
-            # Collect keypoints (x, y, z coordinates)
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-            keypoints.append(frame_keypoints)
-        else:
-            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-
-    return np.array(keypoints), fps
-
-def extract_keypointsv3_asimg(video_path):
-    cap = cv2.VideoCapture(video_path)
-    keypoints = []
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    while cap.isOpened():
-        
-        ret, frame = cap.read()
-        if not ret:
-            break
-        # Convert the BGR image to RGB
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        result = detector.detect(img).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
-        # copied from extract_keypoints_from_video
-        if result:
-            landmarks = result[0]
-            # Collect keypoints (x, y, z coordinates)
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-            keypoints.append(frame_keypoints)
-        else:
-            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-
-    return np.array(keypoints), fps
-
-
-def extract_keypointsv4_asimg(video_path):
-    frames, timestamps, fps = extract_frames_video(video_path)
-    keypoints = []
-    
-    for frame, timestamp in zip(frames, timestamps):
-        img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame)
-        result = detector.detect_for_video(img, int(timestamp)).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
-        # copied from extract_keypoints_from_video
-        if result:
-            landmarks = result[0]
-            # Collect keypoints (x, y, z coordinates)
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-            keypoints.append(frame_keypoints)
-        else:
-            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-
-    return np.array(keypoints), fps
-
-
-def extract_keypointsv5_asimg(video_path):
-    # fails
-    frames, timestamps, fps = extract_frames_video(video_path)
-    keypoints = []
-    img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frames)
-
-    for _, timestamp in zip(frames, timestamps):
-        result = detector.detect_for_video(img, int(timestamp)).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
-        breakpoint()
-        # copied from extract_keypoints_from_video
-        if result:
-            landmarks = result[0]
-            # Collect keypoints (x, y, z coordinates)
-            frame_keypoints = [(lm.x, lm.y, lm.z) for lm in landmarks]
-            keypoints.append(frame_keypoints)
-        else:
-            keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
-
-    return np.array(keypoints), fps
-
 def extract_keypointsv6_asimg(video_path):
     detector = vision.PoseLandmarker.create_from_options(options)
-    cap = cv2.VideoCapture(video_path)
     convert_video_to_mp4v(video_path)
+    cap = cv2.VideoCapture(video_path)
     keypoints = []
     fps = int(cap.get(cv2.CAP_PROP_FPS))
     while cap.isOpened():

@@ -1,5 +1,29 @@
 import numpy as np
+from swing import Swing
+import json
+import os
 
+def save_swings_to_json(swings, filename):
+    """Save a list of Swing objects to a JSON file."""
+    with open(filename, "w") as f:
+        json.dump([swing.__dict__ for swing in swings], f, indent=4)
+
+        # Example Usage
+        swings = [
+            Swing("forehand", 100, 130, 90, 140, 3.5, 5.2, 30),
+            Swing("backhand", 200, 250, 190, 260, 2.8, 4.5, 30),
+        ]
+ 
+def load_swings_from_json(filename):
+    """Load Swing objects from a JSON file if available; otherwise, return an empty list."""
+    if not os.path.exists(filename):
+        print(f"Warning: {filename} not found. Returning an empty list.")
+        return []  # Return an empty list instead of failing
+    
+    with open(filename, "r") as f:
+        swing_dicts = json.load(f)
+    return [Swing(**swing_dict) for swing_dict in swing_dicts]
+       
 def calculate_angle(shoulder, elbow, wrist):
     """
     Calculate the counterclockwise angle of the elbow bend formed by the shoulder, elbow, and wrist in 2D.
