@@ -19,13 +19,13 @@ extension = '.mp4'
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
 audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',8),('audrey',9),('audrey',10),('audrey',1)]
-amature_paths = [('claire',1),('player',1),('player',2),('player',4),('player',6),('player',7),('player',8),('insta',1)]
+amature_paths = [('player',13),('player',14)]
 pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev',1),('ruud',1),('Djokovic',1),('Minaur',1)]
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 more_amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
 
-test_paths = [('federer',1)] # <<<<<<<<<<<<<<<<<<<<<<<
+test_paths = [('Swiatek',1), ('audrey',22)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
     for player, player_vid_idx in test_paths:
@@ -47,7 +47,6 @@ if pipeline1:
 
         # Detect swing boundaries
         forehand_segments, backhand_segments = detect_swings(keypoints, fps)
-        save_swings_to_json(forehand_segments + backhand_segments, f"{player}/{player_vid}/{player_vid}.json")
         print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
 
         # Process each swing and extract video segments
@@ -57,7 +56,9 @@ if pipeline1:
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
+                forehand_segments[idx].name = f"{output_levels[1]}_forehand{idx+1}{extension}"
                 extract_motion_segment(video_path, start_frame, end_frame, output_video)
+                
 
         # Process each swing and extract video segments
         for idx, backhand in enumerate(backhand_segments):
@@ -66,7 +67,11 @@ if pipeline1:
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
+                backhand_segments[idx].name = f"{output_levels[1]}_backhand{idx+1}{extension}"
                 extract_motion_segment(video_path, start_frame, end_frame, output_video)
+                
+        save_swings_to_json(forehand_segments, f"{player}/{player_vid}/{player_vid}_forehand.json")
+        save_swings_to_json(backhand_segments, f"{player}/{player_vid}/{player_vid}_backhand.json")
                 
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
@@ -74,13 +79,13 @@ if pipeline1:
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
 is_manual = False # <<<<<<<<<<<<<<<<<<<<<<<
-swing_type = 'forehand' # <<<<<<<<<<<<<<<<<<<<<<<
+swing_type = '' # <<<<<<<<<<<<<<<<<<<<<<<
 
 player1 = 'audrey'  # <<<<<<<<<<<<<<<<<<<<<<<
-player1_vid_idx = 9 # <<<<<<<<<<<<<<<<<<<<<<<
+player1_vid_idx = 22 # <<<<<<<<<<<<<<<<<<<<<<<
 player1_swing_idx = 4
 
-player2 = 'Badosa' # <<<<<<<<<<<<<<<<<<<<<<<
+player2 = 'badosa' # <<<<<<<<<<<<<<<<<<<<<<<
 player2_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
 player2_swing_idx = 7
 
@@ -89,10 +94,6 @@ player2_vid = f"{player2}{player2_vid_idx}"
    
 if pipeline2:
     # output 
-    loaded_swings1 = load_swings_from_json(f"{player1}/{player1_vid}/{player1_vid}.json")
-    loaded_swings2 = load_swings_from_json(f"{player2}/{player2_vid}/{player2_vid}.json")
-    
-        
     if is_manual:
         player_compare = f"{player1}_{player2}"
         player_compare_vid = f"{player1_vid}_{player2_vid}"
@@ -107,6 +108,8 @@ if pipeline2:
         sync_video_timings(video1_path, video2_path, overlay_path, comparison_path, swing_type)
     else:
         for swing_type in ("forehand", "backhand"):
+            loaded_swings1 = load_swings_from_json(f"{player1}/{player1_vid}/{player1_vid}_{swing_type}.json")
+            loaded_swings2 = load_swings_from_json(f"{player2}/{player2_vid}/{player2_vid}_{swing_type}.json")
             player_compare = f"{player1}_{player2}"
             player_compare_vid = f"{player1_vid}_{player2_vid}"
             folder1 = f"{player1}/{player1_vid}/{swing_type}"
@@ -129,7 +132,8 @@ if pipeline2:
                 min_vid2 = None
                 min_vid2_idx = -1
                 best_swing2 = None
-                swing1 = loaded_swings1[idx1]
+                video1_names = video1.split('/')
+                swing1 = next((entry for entry in loaded_swings1 if entry.name == video1_names[-1]), None)
                 
                 for idx2, video2 in enumerate(videos2):
                     if "_fps." in video2:
@@ -137,9 +141,8 @@ if pipeline2:
 
                     container2 = av.open(video2)
                     vid2_duration = container2.duration / av.time_base
-    
-                    swing2 = loaded_swings2[idx2]
-                   
+                    video2_names = video2.split('/')
+                    swing2 = next((entry for entry in loaded_swings2 if entry.name == video2_names[-1]), None)
                     swing_len_diff = abs(swing2.get_swing_len() - swing1.get_swing_len())
                     movement_diff = abs(swing2.movement - swing1.movement)
 

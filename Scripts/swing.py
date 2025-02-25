@@ -1,6 +1,7 @@
 # swing.py
 from dataclasses import dataclass
-from typing import Tuple, Literal
+from typing import Literal
+from typing import Optional
 
 
 SwingType = Literal["forehand", "backhand"]
@@ -16,6 +17,7 @@ class Swing:
     avg_wrist_velocity: float
     movement: float  # left (positive) right (negative)
     fps: int
+    name: Optional[int] = None
 
     def __post_init__(self):
         """Validate that start_frame is less than end_frame."""

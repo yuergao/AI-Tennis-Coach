@@ -7,12 +7,6 @@ def save_swings_to_json(swings, filename):
     """Save a list of Swing objects to a JSON file."""
     with open(filename, "w") as f:
         json.dump([swing.__dict__ for swing in swings], f, indent=4)
-
-        # Example Usage
-        swings = [
-            Swing("forehand", 100, 130, 90, 140, 3.5, 5.2, 30),
-            Swing("backhand", 200, 250, 190, 260, 2.8, 4.5, 30),
-        ]
  
 def load_swings_from_json(filename):
     """Load Swing objects from a JSON file if available; otherwise, return an empty list."""
