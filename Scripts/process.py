@@ -19,16 +19,16 @@ extension = '.mp4'
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
 audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',8),('audrey',9),('audrey',10),('audrey',1)]
-amature_paths = [('player',13),('player',14)]
+player_paths = [('player',5),('player',6),('player',7),('player',8),('player',9),('player',10),('player',11),('player',12),('player',13),('player',14)]
 pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev',1),('ruud',1),('Djokovic',1),('Minaur',1)]
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
-more_amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
+amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
-
+gauff_paths = [('gauff',3)]
 test_paths = [('Swiatek',1), ('audrey',22)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
-    for player, player_vid_idx in test_paths:
+    for player, player_vid_idx in [('sinner',1)]:
         player_vid = f"{player}{player_vid_idx}"
         video_path = f"{player}/{player_vid}/{player_vid}{extension}"
         process_video_path = f"{player}/{player_vid}/{player_vid}_processed{extension}"
@@ -81,11 +81,11 @@ if pipeline1:
 is_manual = False # <<<<<<<<<<<<<<<<<<<<<<<
 swing_type = '' # <<<<<<<<<<<<<<<<<<<<<<<
 
-player1 = 'audrey'  # <<<<<<<<<<<<<<<<<<<<<<<
-player1_vid_idx = 22 # <<<<<<<<<<<<<<<<<<<<<<<
+player1 = 'player'  # <<<<<<<<<<<<<<<<<<<<<<<
+player1_vid_idx = 9 # <<<<<<<<<<<<<<<<<<<<<<<
 player1_swing_idx = 4
 
-player2 = 'badosa' # <<<<<<<<<<<<<<<<<<<<<<<
+player2 = 'sinner' # <<<<<<<<<<<<<<<<<<<<<<<
 player2_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
 player2_swing_idx = 7
 
@@ -145,7 +145,13 @@ if pipeline2:
                     swing2 = next((entry for entry in loaded_swings2 if entry.name == video2_names[-1]), None)
                     swing_len_diff = abs(swing2.get_swing_len() - swing1.get_swing_len())
                     movement_diff = abs(swing2.movement - swing1.movement)
-
+                    
+                    #new
+                    #player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{idx1+1}_{min_vid2_idx+1}"
+                    #overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
+                    #comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
+                    #sync_video_timings(video1, video2, overlay_path, comparison_path, swing_type)
+                    
                     # Define a weighted criteria for comparison
                     total_diff = movement_diff  # Scale movement difference
                     if total_diff < min_diff:
