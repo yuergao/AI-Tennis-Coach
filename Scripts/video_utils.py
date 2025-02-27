@@ -251,6 +251,10 @@ def extract_keypointsv6_asimg(video_path):
 def convert_video_to_mp4v(input_path):
     """Convert a video to MP4 (MPEG-4 `mp4v`) format using FFmpeg, ensuring overwrite works."""
     codec = get_video_codec(input_path)
+    if not codec:
+        print('Incorrect video Name')
+        return 
+    
     if 'mp' in codec:
         return
     

@@ -377,7 +377,7 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=
                                 start_frame = max(0, i)
                                 end_frame = min(i + int(3 * fps), len(orientations) - 1)
                                 contact_swing = find_best_frame(orientations[start_frame:end_frame], backhand_end_criteria, start_frame)
-                                if contact_swing:
+                                if contact_swing and orientations[window_start] and orientations[contact_swing]:
                                     swing_len = contact_swing - start_frame
                                     if swing_len < fps / 3:
                                         continue
