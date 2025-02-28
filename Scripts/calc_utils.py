@@ -60,6 +60,7 @@ def calculate_body_orientation(keypoints):
               #  continue
             try:
                 # Key body points (x, y, z coordinates are now included)
+                nose_x, nose_y, nose_z = keypoint[0][:3]
                 rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
                 ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
                 rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
@@ -135,6 +136,8 @@ def calculate_body_orientation(keypoints):
                     "le_x": le_x,
                     "lh_x": lh_x,
                     "rh_y": rh_y,
+                    "nose_x": nose_x,
+                    "nose_z": nose_z,
                     "left_wrist": (lw_x, lw_y, lw_z),
                     "right_wrist": (rw_x, rw_y, rw_z),
                     "shoulder_hip_distance": shoulder_hip_distance,

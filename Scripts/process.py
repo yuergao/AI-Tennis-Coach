@@ -24,11 +24,11 @@ pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
-gauff_paths = [('gauff',3)]
-test_paths = [('Swiatek',1), ('audrey',22)] # <<<<<<<<<<<<<<<<<<<<<<<
+gauff_paths = [('audrey',22), ('swiatek',3)]
+test_paths = [('qi',1)] # <<<<<<<<<<<<<<<<<<<<<<<
 
 if pipeline1:
-    for player, player_vid_idx in [('sinner',1)]:
+    for player, player_vid_idx in test_paths:
         player_vid = f"{player}{player_vid_idx}"
         video_path = f"{player}/{player_vid}/{player_vid}{extension}"
         process_video_path = f"{player}/{player_vid}/{player_vid}_processed{extension}"
@@ -81,21 +81,22 @@ if pipeline1:
 is_manual = False # <<<<<<<<<<<<<<<<<<<<<<<
 swing_type = '' # <<<<<<<<<<<<<<<<<<<<<<<
 
-player1 = 'player'  # <<<<<<<<<<<<<<<<<<<<<<<
-player1_vid_idx = 9 # <<<<<<<<<<<<<<<<<<<<<<<
+player1 = 'qi'  # <<<<<<<<<<<<<<<<<<<<<<<
+player1_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
 player1_swing_idx = 4
 
-player2 = 'sinner' # <<<<<<<<<<<<<<<<<<<<<<<
-player2_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
+player2 = 'swiatek' # <<<<<<<<<<<<<<<<<<<<<<<
+player2_vid_idx = 2 # <<<<<<<<<<<<<<<<<<<<<<<
 player2_swing_idx = 7
 
 player1_vid = f"{player1}{player1_vid_idx}"
 player2_vid = f"{player2}{player2_vid_idx}"
-   
+player_compare_detail = f"{player1}{player1_vid_idx}_{player2}{player2_vid_idx}"
+player_compare = f"{player1}_{player2}"
+
 if pipeline2:
     # output 
     if is_manual:
-        player_compare = f"{player1}_{player2}"
         player_compare_vid = f"{player1_vid}_{player2_vid}"
         player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{player1_swing_idx}_{player2_swing_idx}"
         overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
@@ -110,7 +111,6 @@ if pipeline2:
         for swing_type in ("forehand", "backhand"):
             loaded_swings1 = load_swings_from_json(f"{player1}/{player1_vid}/{player1_vid}_{swing_type}.json")
             loaded_swings2 = load_swings_from_json(f"{player2}/{player2_vid}/{player2_vid}_{swing_type}.json")
-            player_compare = f"{player1}_{player2}"
             player_compare_vid = f"{player1_vid}_{player2_vid}"
             folder1 = f"{player1}/{player1_vid}/{swing_type}"
             folder2 = f"{player2}/{player2_vid}/{swing_type}"
@@ -144,26 +144,27 @@ if pipeline2:
                     video2_names = video2.split('/')
                     swing2 = next((entry for entry in loaded_swings2 if entry.name == video2_names[-1]), None)
                     swing_len_diff = abs(swing2.get_swing_len() - swing1.get_swing_len())
-                    movement_diff = abs(swing2.movement - swing1.movement)
                     
-                    #new
-                    #player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{idx1+1}_{min_vid2_idx+1}"
-                    #overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
-                    #comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
-                    #sync_video_timings(video1, video2, overlay_path, comparison_path, swing_type)
+                    x_movement_diff = abs(abs(swing2.x_movement) - abs(swing1.x_movement))
+                    x_same_dir = swing2.x_movement * swing1.x_movement >= 0 and x_movement_diff < min(abs(swing1.x_movement), abs(swing2.x_movement))
+                    
+                    z_movement_diff = abs(abs(swing2.z_movement) - abs(swing1.z_movement))
+                    z_same_dir = swing2.z_movement * swing1.z_movement >= 0 and z_movement_diff < min(abs(swing1.z_movement), abs(swing2.z_movement))
                     
                     # Define a weighted criteria for comparison
-                    total_diff = movement_diff  # Scale movement difference
-                    if total_diff < min_diff:
+                    total_diff = x_movement_diff + z_movement_diff # Scale movement difference
+                    if x_same_dir and z_same_dir and total_diff < min_diff:
                         min_diff = total_diff
                         min_vid2 = video2
                         min_vid2_idx = idx2
                         best_swing2 = swing2
                         
-                loaded_swings1[idx1].print_info()
-                best_swing2.print_info()
                 if min_vid2:   
+                    swing1.print_info()
+                    best_swing2.print_info()
                     player_compare_vid_swing = f"{player_compare_vid}_{swing_type}{idx1+1}_{min_vid2_idx+1}"
                     overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
-                    comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
+                    #comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
+                    player_vid = f"{player1}{player1_vid_idx}"
+                    comparison_path = f"{player1}/{player1_vid}/{player_compare_detail}/{swing_type}/{player_compare_vid_swing}{extension}"
                     sync_video_timings(video1, min_vid2, overlay_path, comparison_path, swing_type)

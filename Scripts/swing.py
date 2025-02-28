@@ -15,7 +15,8 @@ class Swing:
     padded_start_frame: int
     padded_end_frame: int
     avg_wrist_velocity: float
-    movement: float  # left (positive) right (negative)
+    x_movement: float  # left (positive) right (negative)
+    z_movement: float # move farther (positive) close (negative)
     fps: int
     name: Optional[int] = None
 
@@ -36,7 +37,7 @@ class Swing:
     
     def print_info(self) -> None:
         """Prints detailed swing information."""
-        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds Movement: {self.movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
+        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
         
         
     def to_sec(self, timestamp: int) -> float:

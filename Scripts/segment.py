@@ -206,7 +206,8 @@ def find_matching_swings_forehand(orientations, fps, threshold=float("inf"), vel
                                     padded_start_frame=max(1, start_frame - fps),
                                     padded_end_frame=min(contact_swing + fps, len(orientations) - 1),
                                     avg_wrist_velocity= avg_wrist_velocity,
-                                    movement = (orientations[max(1, start_frame - fps)]['rs_x'] - orientations[contact_swing]['rs_x']) * 100,
+                                    x_movement = (orientations[max(1, start_frame - fps)]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
+                                    z_movement = (orientations[max(1, start_frame - fps)]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
                                     fps=fps  
                                 )
                                 matching_swings.append(swing)
@@ -389,7 +390,8 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=
                                         end_frame=contact_swing,
                                         padded_start_frame = window_start,
                                         padded_end_frame= min(contact_swing + fps, len(orientations) - 1),
-                                        movement = (orientations[window_start]['rs_x'] - orientations[contact_swing]['rs_x']) * 100,
+                                        x_movement = (orientations[window_start]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
+                                        z_movement = (orientations[window_start]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
                                         fps=fps  
                                     )
                                     swing.print_info()
