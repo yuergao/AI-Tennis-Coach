@@ -5,12 +5,14 @@ from typing import Optional
 
 
 SwingType = Literal["forehand", "backhand"]
+Stance = Literal["open","closed","semi-open"]
 
 @dataclass
 class Swing:
     
     type: SwingType  # "forehand" or "backhand"
     start_frame: int  # Start timestamp
+    contact_frame: int
     end_frame: int  # End timestamp
     padded_start_frame: int
     padded_end_frame: int
@@ -18,6 +20,7 @@ class Swing:
     x_movement: float  # left (positive) right (negative)
     z_movement: float # move farther (positive) close (negative)
     fps: int
+    stance: Optional[Stance] = None
     name: Optional[int] = None
 
     def __post_init__(self):
@@ -35,9 +38,12 @@ class Swing:
         """Returns the duration of the swing in seconds."""
         return round((self.padded_end_frame - self.padded_start_frame)/ self.fps, 1)
     
+    def get_stance_frame(self) -> int:
+        return int((self.start_frame + self.contact_frame) * 2 / 3)
+    
     def print_info(self) -> None:
         """Prints detailed swing information."""
-        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
+        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds stance: {self.stance} x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
         
         
     def to_sec(self, timestamp: int) -> float:

@@ -9,8 +9,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 # User inputs
-pipeline1 = False # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = True  # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = False  # <<<<<<<<<<<<<<<<<<<<<<<
 extension = '.mp4'
 
 '''
@@ -18,14 +18,13 @@ extension = '.mp4'
 ---------------------- Pipeline Segment 1: segment original full video into separate swings----------------------------------------
 -----------------------------------------------------------------------------------------------------------------------------------
 '''
-audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',8),('audrey',9),('audrey',10),('audrey',1)]
-player_paths = [('player',5),('player',6),('player',7),('player',8),('player',9),('player',10),('player',11),('player',12),('player',13),('player',14)]
+audrey_paths = [('audrey',12),('audrey',13),('audrey',14),('audrey',4),('audrey',5),('audrey',6),('audrey',7),('audrey',9),('audrey',10),('audrey',1)]
+player_paths = [('player',5),('player',6),('player',4),('player',3),('player',9),('player',11),('player',12),('player',2),('player',1)]
 pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev',1),('ruud',1),('Djokovic',1),('Minaur',1)]
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
-gauff_paths = [('audrey',22), ('swiatek',3)]
-test_paths = [('qi',1)] # <<<<<<<<<<<<<<<<<<<<<<<
+test_paths = [('sabalenka',1),('swiatek',1),('zverev',1)]
 
 if pipeline1:
     for player, player_vid_idx in test_paths:
@@ -51,8 +50,8 @@ if pipeline1:
 
         # Process each swing and extract video segments
         for idx, forehand in enumerate(forehand_segments):
-            start_frame = forehand.padded_start_frame
-            end_frame = forehand.padded_end_frame
+            start_frame = forehand.padded_start_frame # <<<<<<<
+            end_frame = forehand.padded_end_frame # <<<<<<<
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
@@ -62,8 +61,8 @@ if pipeline1:
 
         # Process each swing and extract video segments
         for idx, backhand in enumerate(backhand_segments):
-            start_frame = backhand.padded_start_frame
-            end_frame = backhand.padded_end_frame
+            start_frame = backhand.padded_start_frame # <<<<<<<
+            end_frame = backhand.padded_end_frame # <<<<<<<
             if start_frame >= 0 and end_frame > start_frame:
                 #find previous directory
                 output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
@@ -81,12 +80,12 @@ if pipeline1:
 is_manual = False # <<<<<<<<<<<<<<<<<<<<<<<
 swing_type = '' # <<<<<<<<<<<<<<<<<<<<<<<
 
-player1 = 'qi'  # <<<<<<<<<<<<<<<<<<<<<<<
-player1_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
+player1 = 'player'  # <<<<<<<<<<<<<<<<<<<<<<<
+player1_vid_idx = 12 # <<<<<<<<<<<<<<<<<<<<<<<
 player1_swing_idx = 4
 
-player2 = 'swiatek' # <<<<<<<<<<<<<<<<<<<<<<<
-player2_vid_idx = 2 # <<<<<<<<<<<<<<<<<<<<<<<
+player2 = 'alcaraz' # <<<<<<<<<<<<<<<<<<<<<<<
+player2_vid_idx = 1 # <<<<<<<<<<<<<<<<<<<<<<<
 player2_swing_idx = 7
 
 player1_vid = f"{player1}{player1_vid_idx}"
@@ -117,7 +116,7 @@ if pipeline2:
             
             videos1 = [os.path.join(folder1, f) for f in os.listdir(folder1) if f.endswith(('.mp4'))]
             videos2 = [os.path.join(folder2, f) for f in os.listdir(folder2) if f.endswith(('.mp4'))]
-            folder_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}"
+            folder_path = f"{player1}/{player1_vid}/{player_compare_detail}/{swing_type}"
             vid2_swing_lens = []
             clear_output_folder(folder_path)
             
@@ -167,4 +166,4 @@ if pipeline2:
                     #comparison_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}{extension}"
                     player_vid = f"{player1}{player1_vid_idx}"
                     comparison_path = f"{player1}/{player1_vid}/{player_compare_detail}/{swing_type}/{player_compare_vid_swing}{extension}"
-                    sync_video_timings(video1, min_vid2, overlay_path, comparison_path, swing_type)
+                    sync_video_timings(video1, min_vid2, overlay_path, comparison_path, swing_type, swing1, best_swing2)

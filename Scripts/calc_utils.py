@@ -48,6 +48,30 @@ def calculate_angle(shoulder, elbow, wrist):
 
     return angle_degrees
 
+def calculate_forehand_stance(orientation):
+    body = orientation['shoulder_hip_distance']
+    x_distance = (orientation['ra_x'] - orientation['la_x']) / orientation['shoulder_hip_distance']
+    z_distance = (orientation['la_z'] - orientation['ra_z']) / orientation['shoulder_hip_distance']
+    
+    #print(f"x: {x_distance:.2f}, z: {z_distance:.2f} {body}")
+    if x_distance < 0.35:
+        return "closed"
+    if z_distance < 1.1:
+        return "open"
+    return "semi-open"
+    
+def calculate_backhand_stance(orientation):
+    body = orientation['shoulder_hip_distance']
+    x_distance = (orientation['ra_x'] - orientation['la_x']) / orientation['shoulder_hip_distance']
+    z_distance = (orientation['ra_z'] - orientation['la_z']) / orientation['shoulder_hip_distance']
+    
+    #print(f"x: {x_distance:.2f}, z: {z_distance:.2f} {body}")
+    if x_distance < 0.35:
+        return "closed"
+    if z_distance < 1.1:
+        return "open"
+    return "semi-open"
+    
 # Function to calculate body orientation and distances for each frame
 # called by find_most_parallel_and_furthest_segment
 def calculate_body_orientation(keypoints):
@@ -136,6 +160,8 @@ def calculate_body_orientation(keypoints):
                     "le_x": le_x,
                     "lh_x": lh_x,
                     "rh_y": rh_y,
+                    "re_z": re_z,
+                    "rh_z": rh_z,
                     "nose_x": nose_x,
                     "nose_z": nose_z,
                     "left_wrist": (lw_x, lw_y, lw_z),
