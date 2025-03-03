@@ -6,6 +6,7 @@ from typing import Optional
 
 SwingType = Literal["forehand", "backhand"]
 Stance = Literal["open","closed","semi-open"]
+Contact = Literal["high","middle","low"]
 
 @dataclass
 class Swing:
@@ -13,6 +14,7 @@ class Swing:
     type: SwingType  # "forehand" or "backhand"
     start_frame: int  # Start timestamp
     contact_frame: int
+    contact_point: Contact
     end_frame: int  # End timestamp
     padded_start_frame: int
     padded_end_frame: int
@@ -43,7 +45,7 @@ class Swing:
     
     def print_info(self) -> None:
         """Prints detailed swing information."""
-        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds stance: {self.stance} x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
+        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds stance: {self.stance} contact: {self.contact_point} x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
         
         
     def to_sec(self, timestamp: int) -> float:

@@ -225,22 +225,24 @@ def find_matching_swings_forehand(orientations, fps, threshold=float("inf"), vel
                                         continue
                                     # Passes All Check, swing identidied, create Swing
                                     stance_frame = int((contact_swing - start_frame) * 2 / 3) + start_frame
-                                    swing = Swing(
-                                        type="forehand",
-                                        start_frame= start_frame,
-                                        contact_frame = contact_swing,
-                                        end_frame = end_swing,
-                                        stance = calculate_forehand_stance(orientations[stance_frame]),
-                                        padded_start_frame=max(1, start_frame - fps),
-                                        padded_end_frame=min(contact_swing + fps, len(orientations) - 1),
-                                        avg_wrist_velocity= avg_wrist_velocity,
-                                        x_movement = (orientations[max(1, start_frame - fps)]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
-                                        z_movement = (orientations[max(1, start_frame - fps)]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
-                                        fps=fps  
-                                    )
-                                    matching_swings.append(swing)
-                                    swing.print_info()
-                                    last_selected_frame = i  # Update the last selected frame
+                                    if orientations[stance_frame] and orientations[max(1, start_frame - fps)]:
+                                        swing = Swing(
+                                            type="forehand",
+                                            start_frame= start_frame,
+                                            contact_frame = contact_swing,
+                                            contact_point = calculate_contact_point(orientations[contact_swing]),
+                                            end_frame = end_swing,
+                                            stance = calculate_forehand_stance(orientations[stance_frame]),
+                                            padded_start_frame=max(1, start_frame - fps),
+                                            padded_end_frame=min(contact_swing + fps, len(orientations) - 1),
+                                            avg_wrist_velocity= avg_wrist_velocity,
+                                            x_movement = (orientations[max(1, start_frame - fps)]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
+                                            z_movement = (orientations[max(1, start_frame - fps)]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
+                                            fps=fps  
+                                        )
+                                        matching_swings.append(swing)
+                                        swing.print_info()
+                                        last_selected_frame = i  # Update the last selected frame
 
     return matching_swings
 
@@ -309,6 +311,15 @@ def backhand_start_criteria(orientation, i):
         #print(f"frame: {i}, wrist together: {left_wrist_to_shoulder_distance}")
         
     return score
+
+# backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def backhand_contact_criteria(orientation, i):
+    # Ensure both hands between legs
+    both_hands_between_legs = orientation["lw_z"] > orientation['la_z'] and orientation['lw_z'] > orientation['ra_z']
+    both_hands_on_right_side_score =  0 if both_hands_between_legs else float("inf")  # 0 if arm is on the right side, inf if not
+
+    total_score = both_hands_on_right_side_score
+    return total_score
 
 # backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def backhand_end_criteria(orientation, i):
@@ -412,21 +423,23 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=
                                         continue
                                     stance_frame = int((contact_swing - start_frame) * 2 / 3) + start_frame
                                     # Passes All Check, swing identidied, create Swing
-                                    swing = Swing(
-                                        type="backhand",
-                                        avg_wrist_velocity=avg_wrist_velocity,
-                                        start_frame=i,
-                                        contact_frame= contact_swing, #TODO: Find contact point
-                                        end_frame=contact_swing,
-                                        stance = calculate_backhand_stance(orientations[stance_frame]),
-                                        padded_start_frame = window_start,
-                                        padded_end_frame= min(contact_swing + fps, len(orientations) - 1),
-                                        x_movement = (orientations[window_start]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
-                                        z_movement = (orientations[window_start]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
-                                        fps=fps  
-                                    )
-                                    swing.print_info()
-                                    matching_swings.append(swing)
-                                    last_selected_frame = i  # Update the last selected frame
+                                    if orientations[stance_frame]:
+                                        swing = Swing(
+                                            type="backhand",
+                                            avg_wrist_velocity=avg_wrist_velocity,
+                                            start_frame=i,
+                                            contact_frame= contact_swing, #TODO: Find contact point
+                                            contact_point = calculate_contact_point(orientations[contact_swing]),
+                                            end_frame=contact_swing,
+                                            stance = calculate_backhand_stance(orientations[stance_frame]),
+                                            padded_start_frame = window_start,
+                                            padded_end_frame= min(contact_swing + fps, len(orientations) - 1),
+                                            x_movement = (orientations[window_start]['nose_x'] - orientations[contact_swing]['nose_x']) * 100,
+                                            z_movement = (orientations[window_start]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
+                                            fps=fps  
+                                        )
+                                        swing.print_info()
+                                        matching_swings.append(swing)
+                                        last_selected_frame = i  # Update the last selected frame
 
     return matching_swings

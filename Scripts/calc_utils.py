@@ -48,6 +48,15 @@ def calculate_angle(shoulder, elbow, wrist):
 
     return angle_degrees
 
+def calculate_contact_point(orientation):
+    if orientation['rw_y'] < orientation['rs_y']:
+        return "high"
+    if orientation['rw_y'] > orientation['rh_y']:
+        return "low"
+    
+    return 'middle'
+
+
 def calculate_forehand_stance(orientation):
     body = orientation['shoulder_hip_distance']
     x_distance = (orientation['ra_x'] - orientation['la_x']) / orientation['shoulder_hip_distance']
