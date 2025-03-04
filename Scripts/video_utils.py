@@ -65,11 +65,14 @@ def extract_frames_video(video_path):
     cap.release()
     return np.array(frames), timestamps, fps
 
-# called by driver in pipeline 1  
-def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
-    """Extract a segment of the video based on frame indices with optional pose detection lines."""
-    # Ensure the output directory exists
+def extract_motion_segment(video_path, start_frame, end_frame, output_path, blank_output_path, draw_pose=True):
+    """Extracts a segment of the video with pose detection and racket tracking.
+       Saves both the original annotated video and a blank motion-detection-only output.
+    """
+
+    # Ensure the output directories exist
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(blank_output_path), exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
@@ -80,6 +83,7 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = int(cap.get(cv2.CAP_PROP_FPS))
+
     if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
         if end_frame >= total_frames:
             end_frame = total_frames - 1
@@ -87,13 +91,13 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
             print(f"Invalid frame range: start_frame={start_frame}, end_frame={end_frame}, total_frames={total_frames}")
             return
 
-    # Set up video writer
+    # Set up video writers
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    blank_out = cv2.VideoWriter(blank_output_path, fourcc, fps, (width, height))
 
     # Jump to the start frame
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
     frame_idx = start_frame
     print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
 
@@ -101,41 +105,128 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
     if draw_pose:
         mp_pose = mp.solutions.pose
         pose = mp_pose.Pose(
-                model_complexity=1, 
-                min_detection_confidence=0.9, 
-                min_tracking_confidence=0.8)
+            model_complexity=1, 
+            min_detection_confidence=0.9, 
+            min_tracking_confidence=0.8
+        )
         mp_drawing = mp.solutions.drawing_utils
+
+    prev_gray = None  # For racket tracking
 
     while frame_idx <= end_frame:
         ret, frame = cap.read()
         if not ret:
-            print(f"Frame {frame_idx} could not be read, ending extraction.")
-            break
+            print(f"Frame {frame_idx} could not be read, skipping frame.")
+            frame_idx += 1
+            continue
+
+        # Create a blank frame for motion visualization
+        blank_frame = np.zeros((height, width, 3), dtype=np.uint8)
 
         if draw_pose:
             # Convert the frame to RGB for MediaPipe processing
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = pose.process(rgb_frame)
 
-            # Draw pose landmarks on the frame
+            # Draw pose landmarks on the original frame
             if results.pose_landmarks:
                 mp_drawing.draw_landmarks(
                     frame,
                     results.pose_landmarks,
                     mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),
                 )
 
-        # Write the frame (annotated or original) to the output video
+                # Convert to grayscale for motion detection
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                # Get wrist and elbow coordinates
+                wrist_idx = mp_pose.PoseLandmark.RIGHT_WRIST.value
+                elbow_idx = mp_pose.PoseLandmark.RIGHT_ELBOW.value
+
+                wrist = results.pose_landmarks.landmark[wrist_idx]
+                elbow = results.pose_landmarks.landmark[elbow_idx]
+
+                wx, wy = int(wrist.x * width), int(wrist.y * height)
+                ex, ey = int(elbow.x * width), int(elbow.y * height)
+
+                # Keep the original bounding box calculations
+                forearm_dx = wx - ex
+                forearm_dy = wy - ey
+                forearm_length = np.sqrt(forearm_dx**2 + forearm_dy**2)
+
+                # Normalize the direction vector
+                if forearm_length > 0:
+                    forearm_dx /= forearm_length
+                    forearm_dy /= forearm_length
+
+                # Compute rotated bounding box points from wrist (unchanged from original)
+                points = np.array([
+                    (wx - forearm_dy * 300, wy + forearm_dx * 300),  # Top-left
+                    (wx + forearm_dy * 300, wy - forearm_dx * 300),  # Bottom-left
+                    (wx + forearm_dx * 300 + forearm_dy * 300, wy + forearm_dy * 300 - forearm_dx * 300),  # Bottom-right
+                    (wx + forearm_dx * 300 - forearm_dy * 300, wy + forearm_dy * 300 + forearm_dx * 300)   # Top-right
+                ], dtype=np.int32)
+
+                # Get bounding box min/max coordinates for ROI extraction
+                x_min, y_min = np.min(points, axis=0)
+                x_max, y_max = np.max(points, axis=0)
+
+                # Ensure ROI is within frame bounds
+                x_min, x_max = max(0, x_min), min(width, x_max)
+                y_min, y_max = max(0, y_min), min(height, y_max)
+
+                # Extract ROI
+                roi = gray[y_min:y_max, x_min:x_max]
+                #roi = gray
+
+                if prev_gray is not None and roi.size > 0:
+                    # Extract previous frame ROI
+                    prev_roi = prev_gray[y_min:y_max, x_min:x_max]
+                    #prev_roi = prev_gray
+
+                    # Compute absolute difference for motion detection
+                    motion_edges = cv2.absdiff(prev_roi, roi)
+
+                    # Apply stronger Gaussian blur to remove noise
+                    blurred_roi = cv2.GaussianBlur(motion_edges, (7, 7), 0)
+
+                    # Apply Canny Edge Detection with slightly higher thresholds
+                    edges = cv2.Canny(blurred_roi, 60, 180)  
+
+                    # Apply dilation to strengthen detected racket edges
+                    kernel = np.ones((3, 3), np.uint8)
+                    edges = cv2.dilate(edges, kernel, iterations=1)
+
+                    # Overlay detected motion edges inside the ROI on blank frame
+                    blank_frame[y_min:y_max, x_min:x_max] = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+                    #blank_frame = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+
+                # Draw elbow and wrist landmarks on both frames
+                cv2.circle(frame, (ex, ey), 5, (255, 0, 0), -1)  # Blue dot for elbow
+                cv2.circle(frame, (wx, wy), 5, (0, 0, 255), -1)  # Red dot for wrist
+                cv2.circle(blank_frame, (ex, ey), 5, (255, 0, 0), -1)
+                cv2.circle(blank_frame, (wx, wy), 5, (0, 0, 255), -1)
+
+            # Update previous frame
+            prev_gray = gray.copy()
+
+        # Write both frames (annotated original & blank frame with motion edges) to outputs
         out.write(frame)
+        blank_out.write(blank_frame)
+
         frame_idx += 1
 
     cap.release()
     out.release()
+    blank_out.release()
+
     if draw_pose:
         pose.close()
-    print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
+
+    print(f"Segment saved to {output_path}{' with pose and racket annotations' if draw_pose else ''}")
+    print(f"Motion-only segment saved to {blank_output_path}")
 
 
 # function to clear folder 
