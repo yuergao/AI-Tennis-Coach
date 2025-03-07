@@ -66,9 +66,12 @@ def extract_frames_video(video_path):
     return np.array(frames), timestamps, fps
 
 # called by driver in pipeline 1  
-def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw_pose=True):
+def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
     """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
+    start_frame = swing.padded_start_frame # <<<<<<<
+    end_frame = swing.padded_end_frame # <<<<<<<
+    
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
     cap = cv2.VideoCapture(video_path)
@@ -90,7 +93,7 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
     # Set up video writer
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-
+    out2 = cv2.VideoWriter(output_stick_path, fourcc, fps, (width, height*2))
     # Jump to the start frame
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
 
@@ -108,15 +111,61 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
 
     while frame_idx <= end_frame:
         ret, frame = cap.read()
+        blank_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        
         if not ret:
             print(f"Frame {frame_idx} could not be read, ending extraction.")
             break
+        
+        # Convert the frame to RGB for MediaPipe processing
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(rgb_frame)    
+            
+        if stickfigure:
+            
+            mp_drawing.draw_landmarks(
+                    blank_frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                )
+            
+            
+            # Define multiple lines of text
+            lines = [
+                f"{swing.type}",
+                f'{swing.stance} stance',
+                f'lateral move {swing.x_movement:.1f}',
+                f'depth move {swing.z_movement:.1f}',
+                f'swing length {swing.get_swing_len():.1f} seconds'
+                #f"{'right' if swing.x_movement < 0 else 'left'} ({abs(swing.x_movement):.1f})",
+                #f"{'backward' if swing.x_movement < 0 else 'forward'} ({abs(swing.z_movement):.1f})"
+            ]
 
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1  # Adjust text size
+            font_thickness = 2
+            text_color = (255, 255, 255)  # White text
+
+            # Get text height to determine spacing
+            _, text_height = cv2.getTextSize("A", font, font_scale, font_thickness)[0]
+
+            # Define starting position for the first line (top-right)
+            x_position = width - 10  # Right-aligned, adjust as needed
+            y_position = 30  # Starting height from the top
+
+            # Add each line to the frame
+            for line in lines:
+                (text_width, _) = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
+                x = x_position - text_width  # Right-align text
+                cv2.putText(blank_frame, line, (x, y_position), font, font_scale, text_color, font_thickness)
+                y_position += text_height + 10  # Move down for the next line
+                
+            stacked_frame = np.vstack([frame, blank_frame])
+            out2.write(stacked_frame)
+            
         if draw_pose:
-            # Convert the frame to RGB for MediaPipe processing
-            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            results = pose.process(rgb_frame)
-
             # Draw pose landmarks on the frame
             if results.pose_landmarks:
                 mp_drawing.draw_landmarks(
@@ -126,13 +175,14 @@ def extract_motion_segment(video_path, start_frame, end_frame, output_path, draw
                     mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
                     mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
                 )
-
-        # Write the frame (annotated or original) to the output video
-        out.write(frame)
+                # Write the frame (annotated or original) to the output video
+                out.write(frame)
+                    
         frame_idx += 1
 
     cap.release()
     out.release()
+    out2.release
     if draw_pose:
         pose.close()
     print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")

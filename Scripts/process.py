@@ -9,8 +9,8 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 
 # User inputs
-pipeline1 = False # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = False # <<<<<<<<<<<<<<<<<<<<<<<
 extension = '.mp4'
 
 '''
@@ -24,7 +24,8 @@ pro_male_paths = [('sinner',1),('zverev',1),('alcaraz',1),('fritz',1),('medvedev
 pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zheng',1),('rybakina',1),('pegula',1),('badosa',1)]
 amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
-test_paths = []
+test_paths = [('audrey',22
+               )]
 
 if pipeline1:
     for player, player_vid_idx in test_paths :
@@ -51,24 +52,20 @@ if pipeline1:
         
         # Process each swing and extract video segments
         for idx, forehand in enumerate(forehand_segments):
-            start_frame = forehand.padded_start_frame # <<<<<<<
-            end_frame = forehand.padded_end_frame # <<<<<<<
-            if start_frame >= 0 and end_frame > start_frame:
-                #find previous directory
-                output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
-                forehand_segments[idx].name = f"{output_levels[1]}_forehand{idx+1}{extension}"
-                extract_motion_segment(video_path, start_frame, end_frame, output_video)
+            #find previous directory
+            output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
+            output_stick_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}stacked{extension}"
+            forehand_segments[idx].name = f"{output_levels[1]}_forehand{idx+1}{extension}"
+            extract_motion_segment(video_path, forehand, output_video, output_stick_video)
                 
 
         # Process each swing and extract video segments
         for idx, backhand in enumerate(backhand_segments):
-            start_frame = backhand.padded_start_frame # <<<<<<<
-            end_frame = backhand.padded_end_frame # <<<<<<<
-            if start_frame >= 0 and end_frame > start_frame:
-                #find previous directory
-                output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
-                backhand_segments[idx].name = f"{output_levels[1]}_backhand{idx+1}{extension}"
-                extract_motion_segment(video_path, start_frame, end_frame, output_video)
+            #find previous directory
+            output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
+            output_stick_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}stacked{extension}"
+            backhand_segments[idx].name = f"{output_levels[1]}_backhand{idx+1}{extension}"
+            extract_motion_segment(video_path, backhand, output_video, output_stick_video)
                 
         save_swings_to_json(forehand_segments, f"{player}/{player_vid}/{player_vid}_forehand.json")
         save_swings_to_json(backhand_segments, f"{player}/{player_vid}/{player_vid}_backhand.json")
