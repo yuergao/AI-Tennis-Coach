@@ -39,10 +39,10 @@ def find_best_frame(orientations, criteria, start_frame):
 
 # called by driver
 # function to detect start and end indices of tennis swings based on wrist position.
-def detect_swings(keypoints, fps):
+def detect_swings(keypoints, fps, double_hand_backhand):
     orientations = calculate_body_orientation(keypoints)
     forehand_swings = find_matching_swings_forehand(orientations,fps)
-    backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings)
+    backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings, double_hand_backhand)
     # Look for key aspects of tennis swing based on wrist position
     return [forehand_swings, backhand_swings]
 
@@ -337,7 +337,7 @@ def backhand_end_criteria(orientation, i):
     return total_score
 
 
-def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=float("inf"), velocity_threshold=3):
+def find_matching_swings_backhand(orientations, fps, forehand_swings, double_hand_backhand, threshold=float("inf"), velocity_threshold=3):
     """
     Find all backhand frames that meet the criteria, ensuring no frames are selected
     within a cooldown period after a match. Includes wrist velocity as a criterion.
@@ -386,18 +386,18 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, threshold=
                 # Calculate wrist velocities for the window
                 avg_wrist_velocity_right, moves_right_rw = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
                 avg_wrist_velocity_left, moves_right_lw = calculate_average_wrist_velocity(left_wrist_coords, fps, orientation['shoulder_hip_distance'])
-                avg_wrist_velocity = avg_wrist_velocity_left
-                if avg_wrist_velocity > velocity_threshold:
-                    #print(f"Backhand frames: {i} to {window_end}, wrist_velocity: {avg_wrist_velocity}")
-                    pass
 
                 # Check if average velocity exceeds the threshold
+                if double_hand_backhand:
+                    avg_wrist_velocity = avg_wrist_velocity_left
+                else:
+                    avg_wrist_velocity = avg_wrist_velocity_right
+                    
                 velocity_exceeds_threshold = avg_wrist_velocity > velocity_threshold
-
                 if velocity_exceeds_threshold and moves_right_rw:
                     scores_window = []
                     for j in range(window_start, window_end):
-                        if orientations[j] and orientations[j]["wrist_distance"] < 0.3:  # Ensure valid orientation data
+                        if orientations[j] and (not double_hand_backhand or orientations[j]["wrist_distance"] < 0.3):  # Ensure valid orientation data
                             score = (orientations[j]["rs_z"] - orientations[j]["lw_z"]) / orientations[j]["shoulder_hip_distance"]
                             scores_window.append(score)
 
