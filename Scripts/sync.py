@@ -2,6 +2,7 @@ import os
 import cv2
 import numpy as np
 from mediapipe import solutions as mp_solutions
+from video_utils import add_logo
 import os
 import ffmpeg
 
@@ -109,7 +110,10 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
             dup_frame_idx_list.append(dup_frame_idx)
             dup_frame_idx+= interval
         print(f"frames to be duplicated for video 2: {dup_frame_idx_list}")
-        
+    
+    # Load the logo image
+    logo = cv2.imread("logo/logo.png", cv2.IMREAD_UNCHANGED)
+    
     # enter frame processing loop    
     while True:
     
@@ -145,7 +149,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
 
                 # combine videos based on video input orientation
                 combined_frame = np.vstack([padded_frame1, padded_frame2])
-
+                combined_frame == add_logo(combined_frame,logo)
                 #out1.write(overlay_frame)
                 out2.write(combined_frame)
 

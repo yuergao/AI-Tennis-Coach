@@ -7,15 +7,26 @@ import av
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
+# pro local paths
+sabalenka = ('sabalenka',2, True)
+swiatek = ('swiatek',2, True)
+rybakina = ('rybakina',2, True)
+
+djokovic = ('djokovic',2, True)
+fonseco = ('fonseco', 1, True)
+zverev = ('zverev', 2, True)
+alcaraz = ('alcaraz',2,True)
+federer = ('federer',2,False)
 
 # User inputs
-pipeline1 = False # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = False # <<<<<<<<<<<<<<<<<<<<<<<
 
-test_paths = [('mark',1, False)] # <<<<<<<<<<<<<<<<<<<<<<<
-player2_paths = [('alcaraz',2, True),('federer',2, False)] # <<<<<<<<<<< automate <<<<<<<<<<<<
+test_paths = [('original',1, True)] # <<<<<<<<<<<<<<<<<<<<<<<
+player2_paths = [swiatek] # <<<<<<<<<<< automate <<<<<<<<<<<<
+service = ["forehand","backhand"] # <<<<<<<<< service
+Amateur = False # <<<<< generate skeletal breakdown for full video
 
-service = ["forehand", "backhand"] # <<<<<<<<< service
 extension = '.mp4'
 
 '''
@@ -49,29 +60,35 @@ if pipeline1:
         forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand)
         print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
         
-        clear_output_folder(forehand_path)
-        clear_output_folder(backhand_path)
+        # Process each swing and extract video segments
+        if 'forehand' in service:
+            clear_output_folder(forehand_path)
+            for idx, forehand in enumerate(forehand_segments):
+                #find previous directory
+                output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
+                output_stick_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}stacked{extension}"
+                forehand_segments[idx].name = f"{output_levels[1]}_forehand{idx+1}{extension}"
+                extract_motion_segment(video_path, forehand, output_video, output_stick_video)
+                
+            save_swings_to_json(forehand_segments, f"{player}/{player_vid}/{player_vid}_forehand.json")   
+     
+        if 'backhand' in service:
+            clear_output_folder(backhand_path)
+            # Process each swing and extract video segments
+            for idx, backhand in enumerate(backhand_segments):
+                #find previous directory
+                output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
+                output_stick_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}stacked{extension}"
+                backhand_segments[idx].name = f"{output_levels[1]}_backhand{idx+1}{extension}"
+                extract_motion_segment(video_path, backhand, output_video, output_stick_video)
+                    
+            save_swings_to_json(backhand_segments, f"{player}/{player_vid}/{player_vid}_backhand.json")
         
-        # Process each swing and extract video segments
-        for idx, forehand in enumerate(forehand_segments):
-            #find previous directory
-            output_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}{extension}"
-            output_stick_video = f"{forehand_path}/{output_levels[1]}_forehand{idx+1}stacked{extension}"
-            forehand_segments[idx].name = f"{output_levels[1]}_forehand{idx+1}{extension}"
-            extract_motion_segment(video_path, forehand, output_video, output_stick_video)
-                
-
-        # Process each swing and extract video segments
-        for idx, backhand in enumerate(backhand_segments):
-            #find previous directory
-            output_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}{extension}"
-            output_stick_video = f"{backhand_path}/{output_levels[1]}_backhand{idx+1}stacked{extension}"
-            backhand_segments[idx].name = f"{output_levels[1]}_backhand{idx+1}{extension}"
-            extract_motion_segment(video_path, backhand, output_video, output_stick_video)
-                
-        save_swings_to_json(forehand_segments, f"{player}/{player_vid}/{player_vid}_forehand.json")
-        save_swings_to_json(backhand_segments, f"{player}/{player_vid}/{player_vid}_backhand.json")
-                
+        if Amateur:
+            output_video = f"{forehand_path}/{output_levels[1]}{extension}"
+            output_stick_video = f"{forehand_path}/{output_levels[1]}stacked{extension}"
+            extract_all_motion_segment(video_path,output_video,output_stick_video)
+                    
 '''
 -----------------------------------------------------------------------------------------------------------------------------------
 ---------------------- Pipeline Segment 2: output segmented swing comparison videos------------------------------------------------
@@ -119,7 +136,7 @@ if pipeline2:
                     loaded_swings2 = load_swings_from_json(f"{player2}/{player2_vid}/{player2_vid}_{swing_type}.json")
                     player_compare_vid = f"{player1_vid}_{player2_vid}"
                     folder1 = f"{player1}/{player1_vid}/{swing_type}"
-                    folder2 = f"{player2}/{player2_vid}/{swing_type}"
+                    folder2 = f"pros/{player2_vid}/{swing_type}"
                     
                     videos1 = [os.path.join(folder1, f) for f in os.listdir(folder1) if f.endswith(('.mp4'))]
                     videos2 = [os.path.join(folder2, f) for f in os.listdir(folder2) if f.endswith(('.mp4'))]
@@ -132,9 +149,14 @@ if pipeline2:
                             continue  
 
                         container1 = av.open(video1)
+                        if not container1 or not container1.duration:
+                            continue
+                        
                         vid1_duration = container1.duration / av.time_base
 
                         diffs = []
+                        diffs_exlude_stance = []
+                        diffs_exlude_stance_swing_len = []
                         min_vid2 = None
                         min_vid2_idx = -1
                         best_swing2 = None
@@ -167,13 +189,22 @@ if pipeline2:
                             total_diff = x_movement_diff + z_movement_diff # Scale movement difference
                             if x_same_dir and z_same_dir and same_stance and similar_swing_len:
                                 diffs.append((total_diff, video2, swing2))
+                            if x_same_dir and z_same_dir and similar_swing_len:
+                                    diffs_exlude_stance.append((total_diff, video2, swing2))
+                            if x_same_dir and z_same_dir:
+                                    diffs_exlude_stance_swing_len.append((total_diff, video2, swing2))
                         
-                        
-                        if len(diffs) != 0: 
+                        if len(diffs) >= 3: 
                             sorted_diffs = sorted(diffs, key = lambda x:x[0])
+                        elif len(diffs_exlude_stance) >= 3:
+                            sorted_diffs = sorted(diffs_exlude_stance, key = lambda x:x[0])
+                        else:
+                            sorted_diffs = sorted(diffs_exlude_stance_swing_len, key = lambda x:x[0])    
+                        
+                        if len(sorted_diffs) != 0:
                             for i in range(min(len(sorted_diffs), N)):
-                                best_swing2 = diffs[i][2]
-                                min_video2 = diffs[i][1]
+                                best_swing2 = sorted_diffs[i][2]
+                                min_video2 = sorted_diffs[i][1]
                                 min_video2_names = min_video2.split('/')
                                 min_video2_name = min_video2_names[-1].split('.')
                                 
@@ -183,4 +214,4 @@ if pipeline2:
                                 overlay_path = f"{player1}/{player_compare}/{player_compare_vid}/{swing_type}/{player_compare_vid_swing}_overlay{extension}"
                                 comparison_path = f"{player1}/{player1_vid}/{player_compare_detail}/{swing_type}/{player_compare_vid_swing}{extension}"
                                 sync_video_timings(video1, min_video2, overlay_path, comparison_path, swing_type, swing1, best_swing2)
-                
+                        

@@ -65,7 +65,137 @@ def extract_frames_video(video_path):
     cap.release()
     return np.array(frames), timestamps, fps
 
-# called by driver in pipeline 1  
+def add_logo(frame, logo, logo_scale=0.2):
+    """
+    Adds a logo to the bottom-right corner of a frame, resizing it based on a percentage of the frame width 
+    while maintaining the original aspect ratio.
+
+    Parameters:
+    - frame (numpy array): The frame where the logo will be added.
+    - logo (numpy array): The loaded logo image (should include alpha channel if transparency is needed).
+    - logo_scale (float): The percentage of the frame width the logo should take up.
+
+    Returns:
+    - frame (numpy array): The frame with the logo added.
+    """
+
+    if logo is None or frame is None:
+        print("Error: Invalid frame or logo.")
+        return frame
+
+    # Get frame and logo dimensions
+    frame_height, frame_width, _ = frame.shape
+    logo_original_height, logo_original_width = logo.shape[:2]
+
+    # Scale logo width based on frame width
+    logo_width = int(frame_width * logo_scale)
+    aspect_ratio = logo_original_width / logo_original_height  # Maintain aspect ratio
+    logo_height = int(logo_width / aspect_ratio)
+
+    # Resize logo while keeping aspect ratio
+    logo = cv2.resize(logo, (logo_width, logo_height))
+
+    # Define logo placement at the bottom-right corner (no gap)
+    x_offset = frame_width - logo_width
+    y_offset = frame_height - logo_height
+
+    # Check if the logo has an alpha channel (for transparency)
+    if logo.shape[2] == 4:
+        alpha = logo[:, :, 3] / 255.0  # Normalize alpha values
+        for c in range(3):  # Blend the RGB channels with the frame
+            frame[y_offset:y_offset+logo_height, x_offset:x_offset+logo_width, c] = (
+                (1 - alpha) * frame[y_offset:y_offset+logo_height, x_offset:x_offset+logo_width, c] +
+                alpha * logo[:, :, c]
+            )
+    else:  # No transparency, just overlay the logo
+        frame[y_offset:y_offset+logo_height, x_offset:x_offset+logo_width] = logo
+
+    return frame
+
+def extract_all_motion_segment(video_path, output_path, output_stick_path, draw_pose=True, stickfigure=True):
+    """Extract the entire video with optional pose detection lines."""
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("Error: Could not open video.")
+        return
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    
+    start_frame = 0
+    end_frame = total_frames - 1
+
+    # Set up video writer
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    out2 = cv2.VideoWriter(output_stick_path, fourcc, fps, (width, height*2))
+
+    # Start from the beginning
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    frame_idx = start_frame
+    print(f"Extracting entire video: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
+
+    # Initialize MediaPipe Pose if pose drawing is enabled
+    if draw_pose:
+        mp_pose = mp.solutions.pose
+        pose = mp_pose.Pose(
+                model_complexity=1, 
+                min_detection_confidence=0.9, 
+                min_tracking_confidence=0.8)
+        mp_drawing = mp.solutions.drawing_utils
+
+    while frame_idx <= end_frame:
+        ret, frame = cap.read()
+        blank_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        if not ret:
+            print(f"Frame {frame_idx} could not be read, ending extraction.")
+            break
+        
+        # Convert the frame to RGB for MediaPipe processing
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(rgb_frame)    
+            
+        if stickfigure:
+            mp_drawing.draw_landmarks(
+                    blank_frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                )
+            
+            stacked_frame = np.vstack([frame, blank_frame])
+            out2.write(stacked_frame)
+            
+        if draw_pose:
+            # Draw pose landmarks on the frame
+            if results.pose_landmarks:
+                mp_drawing.draw_landmarks(
+                    frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                )
+            # Write the frame (annotated or original) to the output video
+            out.write(frame)
+                    
+        frame_idx += 1
+
+    cap.release()
+    out.release()
+    out2.release()
+    if draw_pose:
+        pose.close()
+    print(f"Video saved to {output_path}{' with pose annotations' if draw_pose else ''}")
+    
 def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
     """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
@@ -163,6 +293,132 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
                 y_position += text_height + 10  # Move down for the next line
                 
             stacked_frame = np.vstack([frame, blank_frame])
+            out2.write(stacked_frame)
+            
+        if draw_pose:
+            # Draw pose landmarks on the frame
+            if results.pose_landmarks:
+                mp_drawing.draw_landmarks(
+                    frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                )
+                # Write the frame (annotated or original) to the output video
+                out.write(frame)
+                    
+        frame_idx += 1
+
+    cap.release()
+    out.release()
+    out2.release
+    if draw_pose:
+        pose.close()
+    print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
+    
+# called by driver in pipeline 1  
+def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
+    """Extract a segment of the video based on frame indices with optional pose detection lines."""
+    # Ensure the output directory exists
+    start_frame = swing.padded_start_frame # <<<<<<<
+    end_frame = swing.padded_end_frame # <<<<<<<
+    
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        print("Error: Could not open video.")
+        return
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
+        if end_frame >= total_frames:
+            end_frame = total_frames - 1
+        else:
+            print(f"Invalid frame range: start_frame={start_frame}, end_frame={end_frame}, total_frames={total_frames}")
+            return
+
+    # Set up video writer
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    out2 = cv2.VideoWriter(output_stick_path, fourcc, fps, (width, height*2))
+    # Jump to the start frame
+    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+
+    frame_idx = start_frame
+    print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
+
+    # Initialize MediaPipe Pose if pose drawing is enabled
+    if draw_pose:
+        mp_pose = mp.solutions.pose
+        pose = mp_pose.Pose(
+                model_complexity=1, 
+                min_detection_confidence=0.9, 
+                min_tracking_confidence=0.8)
+        mp_drawing = mp.solutions.drawing_utils
+
+    # Load the logo image
+    logo = cv2.imread("logo/logo.png", cv2.IMREAD_UNCHANGED)
+    
+    while frame_idx <= end_frame:
+        ret, frame = cap.read()
+        blank_frame = np.zeros((height, width, 3), dtype=np.uint8)
+        
+        if not ret:
+            print(f"Frame {frame_idx} could not be read, ending extraction.")
+            break
+        
+        # Convert the frame to RGB for MediaPipe processing
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        results = pose.process(rgb_frame)    
+            
+        if stickfigure:
+            
+            mp_drawing.draw_landmarks(
+                    blank_frame,
+                    results.pose_landmarks,
+                    mp_pose.POSE_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
+                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                )
+            
+            
+            # Define multiple lines of text
+            lines = [
+                f"{swing.type}",
+                f'{swing.stance} stance',
+                f'lateral move {swing.x_movement:.1f}',
+                f'depth move {swing.z_movement:.1f}',
+                f'swing length {swing.get_swing_len():.1f} seconds'
+                #f"{'right' if swing.x_movement < 0 else 'left'} ({abs(swing.x_movement):.1f})",
+                #f"{'backward' if swing.x_movement < 0 else 'forward'} ({abs(swing.z_movement):.1f})"
+            ]
+
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 1  # Adjust text size
+            font_thickness = 2
+            text_color = (255, 255, 255)  # White text
+
+            # Get text height to determine spacing
+            _, text_height = cv2.getTextSize("A", font, font_scale, font_thickness)[0]
+
+            # Define starting position for the first line (top-right)
+            x_position = width - 10  # Right-aligned, adjust as needed
+            y_position = 30  # Starting height from the top
+
+            # Add each line to the frame
+            for line in lines:
+                (text_width, _) = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
+                x = x_position - text_width  # Right-align text
+                cv2.putText(blank_frame, line, (x, y_position), font, font_scale, text_color, font_thickness)
+                y_position += text_height + 10  # Move down for the next line
+                
+            stacked_frame = np.vstack([frame, blank_frame])
+            stacked_frame = add_logo(stacked_frame, logo)
             out2.write(stacked_frame)
             
         if draw_pose:
