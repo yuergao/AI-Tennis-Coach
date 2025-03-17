@@ -196,126 +196,6 @@ def extract_all_motion_segment(video_path, output_path, output_stick_path, draw_
         pose.close()
     print(f"Video saved to {output_path}{' with pose annotations' if draw_pose else ''}")
     
-def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
-    """Extract a segment of the video based on frame indices with optional pose detection lines."""
-    # Ensure the output directory exists
-    start_frame = swing.padded_start_frame # <<<<<<<
-    end_frame = swing.padded_end_frame # <<<<<<<
-    
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-    cap = cv2.VideoCapture(video_path)
-    if not cap.isOpened():
-        print("Error: Could not open video.")
-        return
-
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    if start_frame < 0 or end_frame >= total_frames or start_frame >= end_frame:
-        if end_frame >= total_frames:
-            end_frame = total_frames - 1
-        else:
-            print(f"Invalid frame range: start_frame={start_frame}, end_frame={end_frame}, total_frames={total_frames}")
-            return
-
-    # Set up video writer
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    out2 = cv2.VideoWriter(output_stick_path, fourcc, fps, (width, height*2))
-    # Jump to the start frame
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-
-    frame_idx = start_frame
-    print(f"Extracting video segment: {start_frame} to {end_frame}. {round((end_frame - start_frame) / fps, 1)} seconds long")
-
-    # Initialize MediaPipe Pose if pose drawing is enabled
-    if draw_pose:
-        mp_pose = mp.solutions.pose
-        pose = mp_pose.Pose(
-                model_complexity=1, 
-                min_detection_confidence=0.9, 
-                min_tracking_confidence=0.8)
-        mp_drawing = mp.solutions.drawing_utils
-
-    while frame_idx <= end_frame:
-        ret, frame = cap.read()
-        blank_frame = np.zeros((height, width, 3), dtype=np.uint8)
-        
-        if not ret:
-            print(f"Frame {frame_idx} could not be read, ending extraction.")
-            break
-        
-        # Convert the frame to RGB for MediaPipe processing
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(rgb_frame)    
-            
-        if stickfigure:
-            
-            mp_drawing.draw_landmarks(
-                    blank_frame,
-                    results.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
-                )
-            
-            
-            # Define multiple lines of text
-            lines = [
-                f"{swing.type}",
-                f'{swing.stance} stance',
-                f'lateral move {swing.x_movement:.1f}',
-                f'depth move {swing.z_movement:.1f}',
-                f'swing length {swing.get_swing_len():.1f} seconds'
-                #f"{'right' if swing.x_movement < 0 else 'left'} ({abs(swing.x_movement):.1f})",
-                #f"{'backward' if swing.x_movement < 0 else 'forward'} ({abs(swing.z_movement):.1f})"
-            ]
-
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1  # Adjust text size
-            font_thickness = 2
-            text_color = (255, 255, 255)  # White text
-
-            # Get text height to determine spacing
-            _, text_height = cv2.getTextSize("A", font, font_scale, font_thickness)[0]
-
-            # Define starting position for the first line (top-right)
-            x_position = width - 10  # Right-aligned, adjust as needed
-            y_position = 30  # Starting height from the top
-
-            # Add each line to the frame
-            for line in lines:
-                (text_width, _) = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
-                x = x_position - text_width  # Right-align text
-                cv2.putText(blank_frame, line, (x, y_position), font, font_scale, text_color, font_thickness)
-                y_position += text_height + 10  # Move down for the next line
-                
-            stacked_frame = np.vstack([frame, blank_frame])
-            out2.write(stacked_frame)
-            
-        if draw_pose:
-            # Draw pose landmarks on the frame
-            if results.pose_landmarks:
-                mp_drawing.draw_landmarks(
-                    frame,
-                    results.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
-                )
-                # Write the frame (annotated or original) to the output video
-                out.write(frame)
-                    
-        frame_idx += 1
-
-    cap.release()
-    out.release()
-    out2.release
-    if draw_pose:
-        pose.close()
-    print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
     
 # called by driver in pipeline 1  
 def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
@@ -391,16 +271,16 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
             lines = [
                 f"{swing.type}",
                 f'{swing.stance} stance',
-                f'lateral move {swing.x_movement:.1f}',
-                f'depth move {swing.z_movement:.1f}',
-                f'swing length {swing.get_swing_len():.1f} seconds'
+                #f'lateral {swing.x_movement:.1f}',
+                #f'depth {swing.z_movement:.1f}',
+                #f'swing length {swing.get_swing_len():.1f} seconds'
                 #f"{'right' if swing.x_movement < 0 else 'left'} ({abs(swing.x_movement):.1f})",
                 #f"{'backward' if swing.x_movement < 0 else 'forward'} ({abs(swing.z_movement):.1f})"
             ]
 
             font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 1  # Adjust text size
-            font_thickness = 2
+            font_scale = height / 720  # Scale text size based on 720p reference
+            font_thickness = int(font_scale * 2)  # Adjust thickness based on scale
             text_color = (255, 255, 255)  # White text
 
             # Get text height to determine spacing
@@ -410,13 +290,20 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
             x_position = width - 10  # Right-aligned, adjust as needed
             y_position = 30  # Starting height from the top
 
+            # Padding values (adjust as needed)
+            padding_x = 20  # Right padding
+            padding_y = int(height * 0.05)  # Top padding (5% of frame height)
+
+            # Adjust starting position for text with top padding
+            y_position = padding_y  
+
             # Add each line to the frame
             for line in lines:
                 (text_width, _) = cv2.getTextSize(line, font, font_scale, font_thickness)[0]
-                x = x_position - text_width  # Right-align text
-                cv2.putText(blank_frame, line, (x, y_position), font, font_scale, text_color, font_thickness)
-                y_position += text_height + 10  # Move down for the next line
-                
+                x = x_position - text_width - padding_x  # Apply right padding
+                cv2.putText(blank_frame, line, (x, y_position), font, font_scale, text_color, font_thickness, cv2.LINE_AA)
+                y_position += text_height + int(10 * (height / 1080))  # Adjust spacing dynamically
+
             stacked_frame = np.vstack([frame, blank_frame])
             stacked_frame = add_logo(stacked_frame, logo)
             out2.write(stacked_frame)
@@ -526,7 +413,7 @@ def new_extract_motion_segment(video_path, start_frame, end_frame, output_path, 
     print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
 
 
-def extract_keypointsv6_asimg(video_path):
+def extract_keypointsv6_asimg(video_path, right_handed):
     detector = vision.PoseLandmarker.create_from_options(options)
     convert_video_to_mp4v(video_path)
     cap = cv2.VideoCapture(video_path)
@@ -537,6 +424,11 @@ def extract_keypointsv6_asimg(video_path):
         ret, frame = cap.read()
         if not ret:
             break
+        
+        # Flip video horizontally if left-handed
+        if not right_handed:
+            frame = cv2.flip(frame, 1)
+
         # Convert the BGR image to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)

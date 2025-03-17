@@ -17,16 +17,20 @@ fonseco = ('fonseco', 1, True)
 zverev = ('zverev', 2, True)
 alcaraz = ('alcaraz',2,True)
 federer = ('federer',2,False)
+draper = ('draper',1,True)
+holger = ('holfer',1,True)
+nadal = ('nadal',1,True)
 
 # User inputs
 pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
 pipeline2 = False # <<<<<<<<<<<<<<<<<<<<<<<
 
-test_paths = [('original',1, True)] # <<<<<<<<<<<<<<<<<<<<<<<
-player2_paths = [swiatek] # <<<<<<<<<<< automate <<<<<<<<<<<<
+test_paths = [nadal] # <<<<<<<<<<<<<<<<<<<<<<<
+player2_paths = [draper] # <<<<<<<<<<< automate <<<<<<<<<<<<
 service = ["forehand","backhand"] # <<<<<<<<< service
 Amateur = False # <<<<< generate skeletal breakdown for full video
 
+right_handed = True
 extension = '.mp4'
 
 '''
@@ -53,11 +57,11 @@ if pipeline1:
         #extract_motion_segment(video_path, start_frame, end_frame, output_video)
         
         #Extract keypoints from the video
-        keypoints, fps = extract_keypointsv6_asimg(video_path)
+        keypoints, fps = extract_keypointsv6_asimg(video_path, right_handed)
         print(f"Finished keypoint extraction for {player}{player_vid_idx}.")
 
         # Detect swing boundaries
-        forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand)
+        forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand, right_handed)
         print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
         
         # Process each swing and extract video segments
@@ -187,13 +191,12 @@ if pipeline2:
                             
                             # Define a weighted criteria for comparison
                             total_diff = x_movement_diff + z_movement_diff # Scale movement difference
-                            if x_same_dir and z_same_dir and same_stance and similar_swing_len:
-                                diffs.append((total_diff, video2, swing2))
-                            if x_same_dir and z_same_dir and similar_swing_len:
-                                    diffs_exlude_stance.append((total_diff, video2, swing2))
                             if x_same_dir and z_same_dir:
-                                    diffs_exlude_stance_swing_len.append((total_diff, video2, swing2))
-                        
+                                diffs_exlude_stance_swing_len.append((total_diff, video2, swing2))
+                                if similar_swing_len:
+                                    diffs_exlude_stance.append((total_diff, video2, swing2))
+                                    if same_stance:
+                                        diffs.append((total_diff, video2, swing2))
                         if len(diffs) >= 3: 
                             sorted_diffs = sorted(diffs, key = lambda x:x[0])
                         elif len(diffs_exlude_stance) >= 3:

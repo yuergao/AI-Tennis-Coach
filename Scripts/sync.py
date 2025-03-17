@@ -144,14 +144,26 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
                 #overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
                 
 
-                padded_frame1 = adjust_frame_to_target(frame1, target_width, target_height)
-                padded_frame2 = adjust_frame_to_target(frame2, target_width, target_height)
+                # Ensure both frames match exactly before stacking
+                frame1_resized = adjust_frame_to_target(frame1, target_width, target_height)
+                frame2_resized = adjust_frame_to_target(frame2, target_width, target_height)
 
-                # combine videos based on video input orientation
-                combined_frame = np.vstack([padded_frame1, padded_frame2])
-                combined_frame == add_logo(combined_frame,logo)
-                #out1.write(overlay_frame)
-                out2.write(combined_frame)
+                # Force both frames to have EXACTLY the same width
+                min_width = min(frame1_resized.shape[1], frame2_resized.shape[1])
+                frame1_resized = frame1_resized[:, :min_width]  # Crop excess width
+                frame2_resized = frame2_resized[:, :min_width]  # Crop excess width
+
+                # Stack frames without gaps
+                combined_frame = np.vstack([frame1_resized, frame2_resized])
+
+                # FORCE final frame to match output video size
+                final_frame = cv2.resize(combined_frame, (output_video_width, output_video_height), interpolation=cv2.INTER_LINEAR)
+
+                # Add logo AFTER resizing to ensure correct placement
+                final_frame = add_logo(final_frame, logo)
+
+                # Write frame to video (ensuring NO PADDING)
+                out2.write(final_frame)
 
         frame_idx1 += 1
         if not skip: # if frame2 is duplicate frame don't increrase idx
@@ -284,8 +296,8 @@ def resample_video(input_path, output_path, target_fps):
     
 def adjust_frame_to_target(frame, target_width, target_height):
     """
-    Adjust a frame to match a target width and height by stretching it to fit while maintaining aspect ratio.
-    Pad only if the aspect ratios differ.
+    Adjust a frame to match a target width and height by resizing it while maintaining aspect ratio.
+    Crop excess areas to ensure the frame completely fills the target size without padding.
 
     Parameters:
         frame (np.ndarray): The input frame (image).
@@ -299,33 +311,26 @@ def adjust_frame_to_target(frame, target_width, target_height):
     original_aspect_ratio = original_width / original_height
     target_aspect_ratio = target_width / target_height
 
-    # Stretch the frame to match the target dimensions
+    # Determine new dimensions to maintain aspect ratio while covering the target size
     if original_aspect_ratio > target_aspect_ratio:
-        # Original frame is wider: Match the height and stretch width
-        new_width = target_width
-        new_height = int(target_width / original_aspect_ratio)
-    else:
-        # Original frame is taller or matches aspect ratio: Match the width and stretch height
+        # Original is wider: Match height and crop width
         new_height = target_height
         new_width = int(target_height * original_aspect_ratio)
+    else:
+        # Original is taller: Match width and crop height
+        new_width = target_width
+        new_height = int(target_width / original_aspect_ratio)
 
-    # Resize the frame
+    # Resize the frame while keeping aspect ratio
     resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
 
-    # Check if padding is needed
-    if new_width != target_width or new_height != target_height:
-        padding_top = (target_height - new_height) // 2
-        padding_bottom = target_height - new_height - padding_top
-        padding_left = (target_width - new_width) // 2
-        padding_right = target_width - new_width - padding_left
+    # Center crop to fit target dimensions exactly
+    x_center = new_width // 2
+    y_center = new_height // 2
+    x_start = x_center - (target_width // 2)
+    y_start = y_center - (target_height // 2)
 
-        # Add padding to center the frame
-        adjusted_frame = cv2.copyMakeBorder(
-            resized_frame,
-            padding_top, padding_bottom, padding_left, padding_right,
-            cv2.BORDER_CONSTANT, value=(0, 0, 0)
-        )
-        return adjusted_frame
+    cropped_frame = resized_frame[y_start:y_start + target_height, x_start:x_start + target_width]
 
-    return resized_frame
+    return cropped_frame
     
