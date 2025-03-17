@@ -1,0 +1,58 @@
+# swing.py
+from dataclasses import dataclass
+from typing import Literal
+from typing import Optional
+
+
+SwingType = Literal["forehand", "backhand"]
+Stance = Literal["open","closed","semi-open"]
+Contact = Literal["high","middle","low"]
+
+@dataclass
+class Swing:
+    
+    type: SwingType  # "forehand" or "backhand"
+    start_frame: int  # Start timestamp
+    contact_frame: int
+    contact_point: Contact
+    end_frame: int  # End timestamp
+    padded_start_frame: int
+    padded_end_frame: int
+    avg_wrist_velocity: float
+    x_movement: float  # left (positive) right (negative)
+    z_movement: float # move farther (positive) close (negative)
+    fps: int
+    stance: Optional[Stance] = None
+    name: Optional[int] = None
+
+    def __post_init__(self):
+        """Validate that start_frame is less than end_frame."""
+        if self.start_frame >= self.end_frame:
+            raise ValueError(f"start_frame ({self.start_frame}) must be less than end_frame ({self.end_frame})")
+        if self.padded_start_frame >= self.padded_end_frame:
+            raise ValueError(f"start_frame ({self.padded_start_frame}) must be less than end_frame ({self.end_frame})")
+        
+    def get_swing_len(self) -> float:
+        """Returns the duration of the swing in seconds."""
+        return round((self.end_frame - self.start_frame)/ self.fps, 1)
+    
+    def get_total_len(self) -> float:
+        """Returns the duration of the swing in seconds."""
+        return round((self.padded_end_frame - self.padded_start_frame)/ self.fps, 1)
+    
+    def get_stance_frame(self) -> int:
+        return int((self.start_frame + self.contact_frame) * 2 / 3)
+    
+    def print_info(self) -> None:
+        """Prints detailed swing information."""
+        print(f"{self.type} frames: {self.padded_start_frame} {self.padded_end_frame} for {self.get_total_len()} seconds stance: {self.stance} contact: {self.contact_point} x_movement: {self.x_movement:.1f} z_movement: {self.z_movement:.1f} avg_wrist_velocity: {self.avg_wrist_velocity:.1f}")
+        
+        
+    def to_sec(self, timestamp: int) -> float:
+        """Convert a timestamp (frame count) to seconds using stored FPS."""
+        return round(timestamp / self.fps, 1)
+    
+    
+    def is_within_padded_range(self, timestamp: int) -> bool:
+        """Check if a given timestamp (frame number) falls within the padded start and padded end."""
+        return self.padded_start_frame <= timestamp <= self.padded_end_frame

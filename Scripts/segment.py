@@ -3,6 +3,7 @@ import numpy as np
 import os
 from video_utils import *
 from calc_utils import *
+from swing import Swing
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 
@@ -38,33 +39,12 @@ def find_best_frame(orientations, criteria, start_frame):
 
 # called by driver
 # function to detect start and end indices of tennis swings based on wrist position.
-def detect_swing_boundaries(keypoints, fps):
-    orientations = calculate_body_orientation(keypoints)
-    forehand_frames = find_matching_frames_forehand(orientations,fps)
-    backhand_frames = find_matching_frames_backhand(orientations,fps, forehand_frames)
-    
+def detect_swings(keypoints, fps, double_hand_backhand, right_handed):
+    orientations = calculate_body_orientation(keypoints)   
+    forehand_swings = find_matching_swings_forehand(orientations,fps, right_handed)
+    backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings, double_hand_backhand, right_handed)
     # Look for key aspects of tennis swing based on wrist position
-    return [forehand_frames, backhand_frames]
-
-
-"""
-Segments the keypoints into swings based on detected swing frames.
-
-Args:
-    keypoints (list): List of keypoints for each frame.
-    swing_frames (list): List of frame indices marking swing boundaries.
-    
-Returns:
-    list: List of tuples representing start and end frame indices for swings.
-"""
-# called by driver in pipeline 1
-# Segments the keypoints into swings based on detected swing frames.
-def segment_swings(swing_frames):
-    if not swing_frames or len(swing_frames) == 0:
-        return []
-
-    swings = [(swing_frames[i][0], swing_frames[i][1]) for i in range(len(swing_frames))]
-    return swings
+    return [forehand_swings, backhand_swings]
 
 
 '''
@@ -107,12 +87,35 @@ def forehand_start_criteria(orientation, i):
     score = (
         arm_on_right_side_score +
         left_hand_position_score +
-        body_rotation_score +
-        foot_position_score
+        body_rotation_score
         #+wrist_together_score
     )
     
     return score
+
+# Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def forehand_contact_criteria(orientation, i):
+    # Minimize the body rotation (i.e., body_rotation should be as close to 0 as possible)
+    #body_rotation_score = abs(orientation["body_rotation"])
+
+    arm_on_right_side = orientation["rw_x"] > orientation["nose_x"] 
+    arm_on_right_side_score = 0 if arm_on_right_side else float("inf")  # 0 if arm is on the right side, inf if not
+
+    # Ensure the left hand is to the left of the right shoulder
+    left_hand_right_of_right_shoulder = orientation["lw_x"] < orientation["rs_x"]
+    left_hand_position_score = 0 if left_hand_right_of_right_shoulder else float("inf")  # 0 if condition is met, inf otherwise
+    
+    #Ensure that the right hand is in front of the body 
+    right_hand_in_front = orientation["rw_z"] >= orientation["rs_z"] and orientation["re_z"] >= orientation["rs_z"] and orientation["rw_z"] >= orientation["rh_z"] and orientation["re_z"] >= orientation["rh_z"]
+    right_hand_in_front_score = 0 if right_hand_in_front else float("inf")
+    
+    # Combine all criteria (can be weighted if necessary)
+    total_score = arm_on_right_side_score + left_hand_position_score + right_hand_in_front_score
+    if total_score < float("inf"):
+        pass
+        #print(f"frame{i}: {total_score}")  # Debugging output
+    return total_score
+
 
 # Pose 2 Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def forehand_end_criteria(orientation, i):
@@ -139,7 +142,7 @@ def forehand_end_criteria(orientation, i):
     return total_score
 
 
-def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), velocity_threshold=2):
+def find_matching_swings_forehand(orientations, fps, right_handed, threshold=float("inf"), velocity_threshold=2):
     """
     Find all frames that meet the criteria within a specified range, ensuring no
     frames are selected within a cooldown period after a match. Includes wrist velocity as a criterion.
@@ -151,9 +154,9 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), vel
     - velocity_threshold: Minimum wrist velocity required to consider the frame (default: 5.0).
 
     Returns:
-    - matching_frames: List of indices of frames that meet the criteria.
+    - matching_swings: List of indices of frames that meet the criteria.
     """
-    matching_frames = []
+    matching_swings = []
     cooldown_seconds = 2
     cooldown_frames = int(cooldown_seconds * fps)  # Number of frames to skip during cooldown
     last_selected_frame = -cooldown_frames  # Initialize to a value before the start
@@ -212,17 +215,37 @@ def find_matching_frames_forehand(orientations, fps, threshold=float("inf"), vel
                         avg_score = np.mean(scores_window)
                         if avg_score < threshold:
                             start_frame = max(0, i)
-                            end_frame = min(i + int(3 * fps), len(orientations) - 1)
-                            contact_swing = find_best_frame(orientations[start_frame:end_frame], forehand_end_criteria, start_frame)
+                            end_frame = min(i + int(2* fps), len(orientations) - 1)
+                            contact_swing = find_best_frame(orientations[start_frame:end_frame], forehand_contact_criteria, start_frame)
                             if contact_swing:
-                                swing_len = contact_swing - start_frame
-                                if swing_len < fps / 3:
-                                    continue
-                                matching_frames.append((max(1, start_frame - fps), min(contact_swing + fps, len(orientations) - 1)))
-                                print(f"forehand frame {window_start /fps:.1f}, {contact_swing/fps:.1f} avg_wrist_velocity: {avg_wrist_velocity:.1f} swing len: {swing_len/fps:.2f}")
-                                last_selected_frame = i  # Update the last selected frame
+                                end_swing = find_best_frame(orientations[contact_swing:end_frame], forehand_end_criteria, contact_swing)
+                                if end_swing:
+                                    swing_len = end_swing - start_frame
+                                    if swing_len < fps / 3:
+                                        continue
+                                    # Passes All Check, swing identidied, create Swing
+                                    stance_frame = int((contact_swing - start_frame) * 2 / 3) + start_frame
+                                    if orientations[stance_frame] and orientations[max(1, start_frame - fps)]:
+                                        swing = Swing(
+                                            type="forehand",
+                                            start_frame= start_frame,
+                                            contact_frame = contact_swing,
+                                            contact_point = calculate_contact_point(orientations[contact_swing]),
+                                            end_frame = end_swing,
+                                            stance = calculate_forehand_stance(orientations[stance_frame]),
+                                            padded_start_frame=max(1, start_frame - fps),
+                                            padded_end_frame=min(contact_swing + fps, len(orientations) - 1),
+                                            avg_wrist_velocity= avg_wrist_velocity,
+                                            x_movement = ((orientations[max(1, start_frame - fps)]['nose_x'] - orientations[contact_swing]['nose_x']) * 100
+                                                        ) * (-1 if not right_handed else 1),
+                                            z_movement = (orientations[max(1, start_frame - fps)]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
+                                            fps=fps  
+                                        )
+                                        matching_swings.append(swing)
+                                        swing.print_info()
+                                        last_selected_frame = i  # Update the last selected frame
 
-    return matching_frames
+    return matching_swings
 
 
 
@@ -291,6 +314,15 @@ def backhand_start_criteria(orientation, i):
     return score
 
 # backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
+def backhand_contact_criteria(orientation, i):
+    # Ensure both hands between legs
+    both_hands_between_legs = orientation["lw_z"] > orientation['la_z'] and orientation['lw_z'] > orientation['ra_z']
+    both_hands_on_right_side_score =  0 if both_hands_between_legs else float("inf")  # 0 if arm is on the right side, inf if not
+
+    total_score = both_hands_on_right_side_score
+    return total_score
+
+# backhand end Criteria: minimize body rotation while right arm is on right side of body and left arm is not on right side of body
 def backhand_end_criteria(orientation, i):
     # Ensure both hands are on the right side of the body
     both_hands_on_right_side = orientation["rw_x"] > orientation["ls_x"] and orientation["lw_x"] > orientation["ls_x"]
@@ -306,7 +338,7 @@ def backhand_end_criteria(orientation, i):
     return total_score
 
 
-def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=float("inf"), velocity_threshold=3):
+def find_matching_swings_backhand(orientations, fps, forehand_swings, double_hand_backhand, right_handed, threshold=float("inf"), velocity_threshold=3):
     """
     Find all backhand frames that meet the criteria, ensuring no frames are selected
     within a cooldown period after a match. Includes wrist velocity as a criterion.
@@ -319,9 +351,9 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
     - velocity_threshold: Minimum average wrist velocity required to consider the frame (default: 5.0).
 
     Returns:
-    - matching_frames: List of indices of frames that meet the criteria.
+    - matching_swings: List of indices of frames that meet the criteria.
     """
-    matching_frames = []
+    matching_swings = []
     cooldown_seconds = 2
     cooldown_frames = int(cooldown_seconds * fps)  # Number of frames to skip during cooldown
     last_selected_frame = -cooldown_frames  # Initialize to a value before the start
@@ -355,18 +387,18 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                 # Calculate wrist velocities for the window
                 avg_wrist_velocity_right, moves_right_rw = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
                 avg_wrist_velocity_left, moves_right_lw = calculate_average_wrist_velocity(left_wrist_coords, fps, orientation['shoulder_hip_distance'])
-                avg_wrist_velocity = avg_wrist_velocity_left
-                if avg_wrist_velocity > velocity_threshold:
-                    #print(f"Backhand frames: {i} to {window_end}, wrist_velocity: {avg_wrist_velocity}")
-                    pass
 
                 # Check if average velocity exceeds the threshold
+                if double_hand_backhand:
+                    avg_wrist_velocity = avg_wrist_velocity_left
+                else:
+                    avg_wrist_velocity = avg_wrist_velocity_right
+                    
                 velocity_exceeds_threshold = avg_wrist_velocity > velocity_threshold
-
                 if velocity_exceeds_threshold and moves_right_rw:
                     scores_window = []
                     for j in range(window_start, window_end):
-                        if orientations[j] and orientations[j]["wrist_distance"] < 0.3:  # Ensure valid orientation data
+                        if orientations[j] and (not double_hand_backhand or orientations[j]["wrist_distance"] < 0.3):  # Ensure valid orientation data
                             score = (orientations[j]["rs_z"] - orientations[j]["lw_z"]) / orientations[j]["shoulder_hip_distance"]
                             scores_window.append(score)
 
@@ -377,8 +409,8 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                         wrist_depth_diff = scores_window[-1]
                         if len(scores_window) > fps / 2 and avg_score > 0 and wrist_depth_diff > 1:
                             skip = False
-                            for forehand_frame in forehand_frames:
-                                if forehand_frame[0] <= i + fps and i <= forehand_frame[1]:
+                            for forehand_swing in forehand_swings:
+                                if forehand_swing.is_within_padded_range(i):
                                     skip = True
                                     break
                             if not skip:
@@ -386,12 +418,30 @@ def find_matching_frames_backhand(orientations, fps, forehand_frames, threshold=
                                 start_frame = max(0, i)
                                 end_frame = min(i + int(3 * fps), len(orientations) - 1)
                                 contact_swing = find_best_frame(orientations[start_frame:end_frame], backhand_end_criteria, start_frame)
-                                if contact_swing:
+                                if contact_swing and orientations[window_start] and orientations[contact_swing]:
                                     swing_len = contact_swing - start_frame
                                     if swing_len < fps / 3:
                                         continue
-                                    print(f"Backhand frames: {window_start /fps:.1f}, {contact_swing /fps:.1f}, avg_wrist_velocity: {avg_wrist_velocity:.1f} swing len: {swing_len /fps:.2f}")
-                                    matching_frames.append((window_start, min(contact_swing + fps, len(orientations) - 1)))
-                                    last_selected_frame = i  # Update the last selected frame
+                                    stance_frame = int((contact_swing - start_frame) * 2 / 3) + start_frame
+                                    # Passes All Check, swing identidied, create Swing
+                                    if orientations[stance_frame]:
+                                        swing = Swing(
+                                            type="backhand",
+                                            avg_wrist_velocity=avg_wrist_velocity,
+                                            start_frame=i,
+                                            contact_frame= contact_swing, #TODO: Find contact point
+                                            contact_point = calculate_contact_point(orientations[contact_swing]),
+                                            end_frame=contact_swing,
+                                            stance = calculate_backhand_stance(orientations[stance_frame]),
+                                            padded_start_frame = window_start,
+                                            padded_end_frame= min(contact_swing + fps, len(orientations) - 1),
+                                            x_movement = ((orientations[window_start]['nose_x'] - orientations[contact_swing]['nose_x']) * 100
+                                                            ) * (-1 if not right_handed else 1),
+                                            z_movement = (orientations[window_start]['nose_z'] - orientations[contact_swing]['nose_z']) * 100,
+                                            fps=fps  
+                                        )
+                                        swing.print_info()
+                                        matching_swings.append(swing)
+                                        last_selected_frame = i  # Update the last selected frame
 
-    return matching_frames
+    return matching_swings

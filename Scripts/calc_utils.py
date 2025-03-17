@@ -1,5 +1,23 @@
 import numpy as np
+from swing import Swing
+import json
+import os
 
+def save_swings_to_json(swings, filename):
+    """Save a list of Swing objects to a JSON file."""
+    with open(filename, "w") as f:
+        json.dump([swing.__dict__ for swing in swings], f, indent=4)
+ 
+def load_swings_from_json(filename):
+    """Load Swing objects from a JSON file if available; otherwise, return an empty list."""
+    if not os.path.exists(filename):
+        print(f"Warning: {filename} not found. Returning an empty list.")
+        return []  # Return an empty list instead of failing
+    
+    with open(filename, "r") as f:
+        swing_dicts = json.load(f)
+    return [Swing(**swing_dict) for swing_dict in swing_dicts]
+       
 def calculate_angle(shoulder, elbow, wrist):
     """
     Calculate the counterclockwise angle of the elbow bend formed by the shoulder, elbow, and wrist in 2D.
@@ -30,6 +48,39 @@ def calculate_angle(shoulder, elbow, wrist):
 
     return angle_degrees
 
+def calculate_contact_point(orientation):
+    if orientation['rw_y'] < orientation['rs_y']:
+        return "high"
+    if orientation['rw_y'] > orientation['rh_y']:
+        return "low"
+    
+    return 'middle'
+
+
+def calculate_forehand_stance(orientation):
+    body = orientation['shoulder_hip_distance']
+    x_distance = (orientation['ra_x'] - orientation['la_x']) / orientation['shoulder_hip_distance']
+    z_distance = (orientation['la_z'] - orientation['ra_z']) / orientation['shoulder_hip_distance']
+    
+    #print(f"x: {x_distance:.2f}, z: {z_distance:.2f} {body}")
+    if x_distance < 0.35:
+        return "closed"
+    if z_distance < 1.1:
+        return "open"
+    return "semi-open"
+    
+def calculate_backhand_stance(orientation):
+    body = orientation['shoulder_hip_distance']
+    x_distance = (orientation['ra_x'] - orientation['la_x']) / orientation['shoulder_hip_distance']
+    z_distance = (orientation['ra_z'] - orientation['la_z']) / orientation['shoulder_hip_distance']
+    
+    #print(f"x: {x_distance:.2f}, z: {z_distance:.2f} {body}")
+    if x_distance < 0.35:
+        return "closed"
+    if z_distance < 1.1:
+        return "open"
+    return "semi-open"
+    
 # Function to calculate body orientation and distances for each frame
 # called by find_most_parallel_and_furthest_segment
 def calculate_body_orientation(keypoints):
@@ -42,6 +93,7 @@ def calculate_body_orientation(keypoints):
               #  continue
             try:
                 # Key body points (x, y, z coordinates are now included)
+                nose_x, nose_y, nose_z = keypoint[0][:3]
                 rs_x, rs_y, rs_z = keypoint[12][:3]  # Right shoulder
                 ls_x, ls_y, ls_z = keypoint[11][:3]  # Left shoulder
                 rh_x, rh_y, rh_z = keypoint[24][:3]  # Right hip
@@ -117,6 +169,10 @@ def calculate_body_orientation(keypoints):
                     "le_x": le_x,
                     "lh_x": lh_x,
                     "rh_y": rh_y,
+                    "re_z": re_z,
+                    "rh_z": rh_z,
+                    "nose_x": nose_x,
+                    "nose_z": nose_z,
                     "left_wrist": (lw_x, lw_y, lw_z),
                     "right_wrist": (rw_x, rw_y, rw_z),
                     "shoulder_hip_distance": shoulder_hip_distance,

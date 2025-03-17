@@ -2,17 +2,43 @@ import os
 import cv2
 import numpy as np
 from mediapipe import solutions as mp_solutions
+from video_utils import add_logo
 import os
+import ffmpeg
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 mp_pose = mp_solutions.pose
 pose = mp_pose.Pose()
     
 # Called by driver. compares 2 video swings. outputs overlay video and comparison video. 
-def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type):  
-    #initialize video capture
+def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, swing_type, swing1, swing2):   
+    min_fps = min(swing1.fps, swing2.fps)   
     cap1 = cv2.VideoCapture(video1_path)
     cap2 = cv2.VideoCapture(video2_path)
+    if swing1.fps > swing2.fps:
+        paths  = video1_path.split('/')
+        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
+        #if os.path.exists(newpath) and os.path.isfile(newpath):
+         #   print(f"dropped frame video exists at {min_fps}")
+        #else:
+        #drop_frames_to_match_fps(video1_path,min_fps,newpath)
+        resample_video(video1_path,newpath,min_fps)
+        video1_path = newpath
+        cap1 = cv2.VideoCapture(video1_path)
+        fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
+        
+    elif swing1.fps < swing2.fps:
+        paths  = video2_path.split('/')
+        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
+        #if os.path.exists(newpath) and os.path.isfile(newpath):
+           # print(f"dropped frame video exists at {min_fps}")
+        #else:
+        #drop_frames_to_match_fps(video2_path,min_fps,newpath)
+        resample_video(video2_path,newpath,min_fps)
+        video2_path = newpath
+        cap2 = cv2.VideoCapture(video2_path)
+        fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
     
     fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
     total_frames1 = int(cap1.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -23,36 +49,10 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     # initialize swing stamps
     vid1_start_sync = fps1
     vid1_end_sync = total_frames1 - fps1
-    vid2_start_sync =  fps2
+    vid2_start_sync = fps2
     vid2_end_sync =  total_frames2 - fps2
     vid1_swing_len = vid1_end_sync - vid1_start_sync
     vid2_swing_len = vid2_end_sync - vid2_start_sync 
-    
-    # match frame rates - sync videos to lower fps
-    min_fps = min(fps1,fps2)
-    if fps1 > fps2:
-        paths  = video1_path.split('/')
-        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
-        #if os.path.exists(newpath) and os.path.isfile(newpath):
-         #   print(f"dropped frame video exists at {min_fps}")
-        #else:
-        vid1_start_sync, vid1_end_sync = drop_frames_to_match_fps(video1_path,min_fps,newpath, vid1_start_sync, vid1_end_sync)
-        vid1_swing_len = vid1_end_sync - vid1_start_sync
-        video1_path = newpath
-        cap1 = cv2.VideoCapture(video1_path)
-        fps1 = int(cap1.get(cv2.CAP_PROP_FPS))
-        
-    elif fps1 < fps2:
-        paths  = video2_path.split('/')
-        newpath = f'{paths[0]}/{paths[1]}/{swing_type}/{paths[1]}_{min_fps}_fps.mp4'
-        #if os.path.exists(newpath) and os.path.isfile(newpath):
-           # print(f"dropped frame video exists at {min_fps}")
-        #else:
-        vid2_start_sync, vid2_end_sync = drop_frames_to_match_fps(video2_path,min_fps,newpath, vid2_start_sync, vid2_end_sync)
-        vid2_swing_len = vid2_end_sync - vid2_start_sync
-        video2_path = newpath
-        cap2 = cv2.VideoCapture(video2_path)
-        fps2 = int(cap2.get(cv2.CAP_PROP_FPS))
     
     print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
     print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
@@ -64,7 +64,6 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
         vid1_start_sync, vid2_start_sync = vid2_start_sync, vid1_start_sync
         vid1_end_sync, vid2_end_sync = vid2_end_sync, vid1_end_sync
         vid1_swing_len, vid2_swing_len = vid2_swing_len, vid1_swing_len
-        fps1, fps2 = fps2, fps1
         cap1, cap2 = cap2, cap1
         print(f"vid1 start sync: {vid1_start_sync} | end sync: {vid1_end_sync} | swing len: {vid1_swing_len}")
         print(f"vid2 start sync: {vid2_start_sync} | end sync: {vid2_end_sync} | swing len: {vid2_swing_len}")
@@ -102,9 +101,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     out2 = cv2.VideoWriter(comaprison_path, cv2.VideoWriter_fourcc(*'mp4v'), min_fps, (output_video_width, output_video_height))
          
     # Choose frames to be duplicated, curr assumes vid2 pro swing is shorter
-    # TODO: detect which video swing is longer and sync accordingly. currently assume player1 swing is longer
     dup_frame_idx_list = [] #initialize frames to be duplicated based on interval
-    #if vid1_swing_len > vid2_swing_len: #video 1 has the longer swing, duplicate vid2 pro frames
     frame_diff = vid1_swing_len - vid2_swing_len
     if frame_diff != 0:
         interval = 1 # so interval is at least 1 not 0
@@ -113,12 +110,13 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
             dup_frame_idx_list.append(dup_frame_idx)
             dup_frame_idx+= interval
         print(f"frames to be duplicated for video 2: {dup_frame_idx_list}")
-        
+    
+    # Load the logo image
+    logo = cv2.imread("logo/logo.png", cv2.IMREAD_UNCHANGED)
     
     # enter frame processing loop    
     while True:
-        
-        # reads frame (TODO: change parts for swing length auto detection at dup_frame_idx_list = [])
+    
         ret1, frame1 = cap1.read()
         skip = False # skip reading frame2 if it should be duplicated
         if frame_idx2 in dup_frame_idx_list:
@@ -146,14 +144,26 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
                 #overlay_frame = resize_and_pad(blank_frame, target_width, target_height)
                 
 
-                padded_frame1 = adjust_frame_to_target(frame1, target_width, target_height)
-                padded_frame2 = adjust_frame_to_target(frame2, target_width, target_height)
+                # Ensure both frames match exactly before stacking
+                frame1_resized = adjust_frame_to_target(frame1, target_width, target_height)
+                frame2_resized = adjust_frame_to_target(frame2, target_width, target_height)
 
-                # combine videos based on video input orientation
-                combined_frame = np.vstack([padded_frame1, padded_frame2])
+                # Force both frames to have EXACTLY the same width
+                min_width = min(frame1_resized.shape[1], frame2_resized.shape[1])
+                frame1_resized = frame1_resized[:, :min_width]  # Crop excess width
+                frame2_resized = frame2_resized[:, :min_width]  # Crop excess width
 
-                #out1.write(overlay_frame)
-                out2.write(combined_frame)
+                # Stack frames without gaps
+                combined_frame = np.vstack([frame1_resized, frame2_resized])
+
+                # FORCE final frame to match output video size
+                final_frame = cv2.resize(combined_frame, (output_video_width, output_video_height), interpolation=cv2.INTER_LINEAR)
+
+                # Add logo AFTER resizing to ensure correct placement
+                final_frame = add_logo(final_frame, logo)
+
+                # Write frame to video (ensuring NO PADDING)
+                out2.write(final_frame)
 
         frame_idx1 += 1
         if not skip: # if frame2 is duplicate frame don't increrase idx
@@ -168,7 +178,7 @@ def sync_video_timings(video1_path, video2_path, overlay_path, comaprison_path, 
     print(f"comparison video saved to {comaprison_path}")
 
 
-def drop_frames_to_match_fps(video_path, target_fps, output_path, vid_start_sync, vid_end_sync):
+def drop_frames_to_match_fps(video_path, target_fps, output_path):
     """
     Adjusts the frame rate of a video by dropping frames to match the target FPS, 
     and adjusts vid_start_sync and vid_end_sync to match the new FPS.
@@ -208,11 +218,6 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path, vid_start_sync
     skip_interval = original_fps / target_fps
     print(f"Frame Skip Interval: {skip_interval}")
 
-    # Adjust sync frame indices to new FPS
-    adjusted_vid_start_sync = int(vid_start_sync / skip_interval)
-    adjusted_vid_end_sync = int(vid_end_sync / skip_interval)
-    print(f"Adjusted Sync Frames: original ({vid_start_sync/original_fps, vid_end_sync/original_fps}) Adjusted ({adjusted_vid_start_sync/target_fps, adjusted_vid_end_sync/target_fps})")
-
     # Initialize VideoWriter
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(output_path, fourcc, target_fps, (width, height))
@@ -239,14 +244,60 @@ def drop_frames_to_match_fps(video_path, target_fps, output_path, vid_start_sync
     cap.release()
     out.release()
     print(f"Video processed successfully and saved to {output_path}")
+    
+    
+def resample_video(input_path, output_path, target_fps):
+    """
+    Resample a video to a target FPS by re-encoding with FFmpeg.
+    
+    Args:
+        input_path (str): Path to input video.
+        output_path (str): Path to save resampled video.
+        target_fps (float): Desired frames per second.
+    """
+    try:
+        # Probe input video for original properties
+        probe = ffmpeg.probe(input_path)
+        video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+        original_fps = eval(video_info['r_frame_rate'])  # e.g., "60/1" → 60.0
+        duration = float(probe['format']['duration'])  # Video duration in seconds
+        
+        print(f"Input: {original_fps} FPS, Duration: {duration}s")
 
-    return adjusted_vid_start_sync, adjusted_vid_end_sync
+        # Set target FPS and calculate expected frame count
+        expected_frames = int(duration * target_fps)
+        print(f"Resampling to {target_fps} FPS, Expected Frames: {expected_frames}")
+
+        # FFmpeg: apply -r before output to force resampling, re-encode with libx264
+        stream = ffmpeg.input(input_path)
+        stream = ffmpeg.output(
+            stream,
+            output_path,
+            vcodec='libx264',  # Re-encode video
+            r=target_fps,      # Target framerate
+            acodec='aac',      # Re-encode audio (or use -an to remove)
+            preset='medium',   # Balance speed and quality
+            loglevel='error'    # Show FFmpeg error for debugging
+        )
+        ffmpeg.run(stream, overwrite_output=True)
+        
+        # Verify output
+        probe_out = ffmpeg.probe(output_path)
+        video_out = next(s for s in probe_out['streams'] if s['codec_type'] == 'video')
+        new_fps = eval(video_out['r_frame_rate'])
+        frame_count = int(video_out['nb_frames'])
+        print(f"Output: {new_fps} FPS, Actual Frames: {frame_count}")
+        
+    except ffmpeg.Error as e:
+        raise Exception(f"FFmpeg error: {e.stderr.decode()}")
+    except Exception as e:
+        raise Exception(f"Error resampling video: {str(e)}")
 
     
 def adjust_frame_to_target(frame, target_width, target_height):
     """
-    Adjust a frame to match a target width and height by stretching it to fit while maintaining aspect ratio.
-    Pad only if the aspect ratios differ.
+    Adjust a frame to match a target width and height by resizing it while maintaining aspect ratio.
+    Crop excess areas to ensure the frame completely fills the target size without padding.
 
     Parameters:
         frame (np.ndarray): The input frame (image).
@@ -260,33 +311,26 @@ def adjust_frame_to_target(frame, target_width, target_height):
     original_aspect_ratio = original_width / original_height
     target_aspect_ratio = target_width / target_height
 
-    # Stretch the frame to match the target dimensions
+    # Determine new dimensions to maintain aspect ratio while covering the target size
     if original_aspect_ratio > target_aspect_ratio:
-        # Original frame is wider: Match the height and stretch width
-        new_width = target_width
-        new_height = int(target_width / original_aspect_ratio)
-    else:
-        # Original frame is taller or matches aspect ratio: Match the width and stretch height
+        # Original is wider: Match height and crop width
         new_height = target_height
         new_width = int(target_height * original_aspect_ratio)
+    else:
+        # Original is taller: Match width and crop height
+        new_width = target_width
+        new_height = int(target_width / original_aspect_ratio)
 
-    # Resize the frame
+    # Resize the frame while keeping aspect ratio
     resized_frame = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
 
-    # Check if padding is needed
-    if new_width != target_width or new_height != target_height:
-        padding_top = (target_height - new_height) // 2
-        padding_bottom = target_height - new_height - padding_top
-        padding_left = (target_width - new_width) // 2
-        padding_right = target_width - new_width - padding_left
+    # Center crop to fit target dimensions exactly
+    x_center = new_width // 2
+    y_center = new_height // 2
+    x_start = x_center - (target_width // 2)
+    y_start = y_center - (target_height // 2)
 
-        # Add padding to center the frame
-        adjusted_frame = cv2.copyMakeBorder(
-            resized_frame,
-            padding_top, padding_bottom, padding_left, padding_right,
-            cv2.BORDER_CONSTANT, value=(0, 0, 0)
-        )
-        return adjusted_frame
+    cropped_frame = resized_frame[y_start:y_start + target_height, x_start:x_start + target_width]
 
-    return resized_frame
+    return cropped_frame
     
