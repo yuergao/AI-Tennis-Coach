@@ -23,14 +23,15 @@ nadal = ('nadal',1,True)
 
 # User inputs
 pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = False # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = True # <<<<<<<<<<<<<<<<<<<<<<<
 
-test_paths = [nadal] # <<<<<<<<<<<<<<<<<<<<<<<
-player2_paths = [draper] # <<<<<<<<<<< automate <<<<<<<<<<<<
+test_paths = [('original',12,True)] # <<<<<<<<<<<<<<<<<<<<<<<
+player2_paths = [djokovic, fonseco] # <<<<<<<<<<< automate <<<<<<<<<<<<
 service = ["forehand","backhand"] # <<<<<<<<< service
 Amateur = False # <<<<< generate skeletal breakdown for full video
 
 right_handed = True
+vid_extension = '.mov'
 extension = '.mp4'
 
 '''
@@ -47,7 +48,7 @@ amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 if pipeline1:
     for player, player_vid_idx, double_hand_backhand in test_paths:
         player_vid = f"{player}{player_vid_idx}"
-        video_path = f"{player}/{player_vid}/{player_vid}{extension}"
+        video_path = f"{player}/{player_vid}/{player_vid}{vid_extension}"
         process_video_path = f"{player}/{player_vid}/{player_vid}_processed{extension}"
         output_levels = video_path.split('/')
         output_folder = f"{output_levels[0]}/{output_levels[1]}"   
@@ -141,13 +142,17 @@ if pipeline2:
                     player_compare_vid = f"{player1_vid}_{player2_vid}"
                     folder1 = f"{player1}/{player1_vid}/{swing_type}"
                     folder2 = f"pros/{player2_vid}/{swing_type}"
-                    
-                    videos1 = [os.path.join(folder1, f) for f in os.listdir(folder1) if f.endswith(('.mp4'))]
-                    videos2 = [os.path.join(folder2, f) for f in os.listdir(folder2) if f.endswith(('.mp4'))]
+                    if os.path.isdir(folder1):
+                        videos1 = [os.path.join(folder1, f) for f in os.listdir(folder1) if f.endswith((extension))]
+                    else:
+                        continue
+                    if os.path.isdir(folder2):
+                        videos2 = [os.path.join(folder2, f) for f in os.listdir(folder2) if f.endswith((extension))]
+                    else:
+                        continue
                     folder_path = f"{player1}/{player1_vid}/{player_compare_detail}/{swing_type}"
                     vid2_swing_lens = []
                     clear_output_folder(folder_path)
-                    
                     for idx1, video1 in enumerate(videos1):
                         if "_fps." in video1 or "stacked." in video1:
                             continue  
@@ -161,13 +166,13 @@ if pipeline2:
                         diffs = []
                         diffs_exlude_stance = []
                         diffs_exlude_stance_swing_len = []
+                        diffs_exlude_all = []
                         min_vid2 = None
                         min_vid2_idx = -1
                         best_swing2 = None
                         video1_names = video1.split('/')
                         video1_name = video1_names[-1].split('.')
                         swing1 = next((entry for entry in loaded_swings1 if entry.name == video1_names[-1]), None)
-                        
                         for idx2, video2 in enumerate(videos2):
                             if "_fps." in video2 or "stacked." in video2:
                                 continue
@@ -191,6 +196,8 @@ if pipeline2:
                             
                             # Define a weighted criteria for comparison
                             total_diff = x_movement_diff + z_movement_diff # Scale movement difference
+                            if x_same_dir:
+                                diffs_exlude_all.append((total_diff, video2, swing2))
                             if x_same_dir and z_same_dir:
                                 diffs_exlude_stance_swing_len.append((total_diff, video2, swing2))
                                 if similar_swing_len:
@@ -201,8 +208,10 @@ if pipeline2:
                             sorted_diffs = sorted(diffs, key = lambda x:x[0])
                         elif len(diffs_exlude_stance) >= 3:
                             sorted_diffs = sorted(diffs_exlude_stance, key = lambda x:x[0])
-                        else:
+                        elif len(diffs_exlude_stance_swing_len) >= 3:
                             sorted_diffs = sorted(diffs_exlude_stance_swing_len, key = lambda x:x[0])    
+                        else:
+                            sorted_diffs = sorted(diffs_exlude_all, key = lambda x:x[0])  
                         
                         if len(sorted_diffs) != 0:
                             for i in range(min(len(sorted_diffs), N)):

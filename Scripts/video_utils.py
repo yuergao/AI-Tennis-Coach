@@ -240,7 +240,30 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
                 min_detection_confidence=0.9, 
                 min_tracking_confidence=0.8)
         mp_drawing = mp.solutions.drawing_utils
-
+        custom_connections = frozenset([
+                                            (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
+                                            (mp_pose.PoseLandmark.RIGHT_ELBOW, mp_pose.PoseLandmark.RIGHT_WRIST),
+                                            (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.LEFT_KNEE),
+                                            (mp_pose.PoseLandmark.LEFT_KNEE, mp_pose.PoseLandmark.LEFT_ANKLE),
+                                        ])
+        custom_connections1 = frozenset([
+    # Upper body (excluding head)
+    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.RIGHT_SHOULDER),
+    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_ELBOW),
+    (mp_pose.PoseLandmark.LEFT_ELBOW, mp_pose.PoseLandmark.LEFT_WRIST),
+    (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
+    (mp_pose.PoseLandmark.RIGHT_ELBOW, mp_pose.PoseLandmark.RIGHT_WRIST),
+    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_HIP),
+    (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_HIP),
+    (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.RIGHT_HIP),
+    # Lower body
+    (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.LEFT_KNEE),
+    (mp_pose.PoseLandmark.LEFT_KNEE, mp_pose.PoseLandmark.LEFT_ANKLE),
+    (mp_pose.PoseLandmark.RIGHT_HIP, mp_pose.PoseLandmark.RIGHT_KNEE),
+    (mp_pose.PoseLandmark.RIGHT_KNEE, mp_pose.PoseLandmark.RIGHT_ANKLE),
+    (mp_pose.PoseLandmark.LEFT_ANKLE, mp_pose.PoseLandmark.LEFT_FOOT_INDEX),
+    (mp_pose.PoseLandmark.RIGHT_ANKLE, mp_pose.PoseLandmark.RIGHT_FOOT_INDEX),
+])
     # Load the logo image
     logo = cv2.imread("logo/logo.png", cv2.IMREAD_UNCHANGED)
     
@@ -262,8 +285,8 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
                     blank_frame,
                     results.pose_landmarks,
                     mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                    connection_drawing_spec= mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=0),  # Red lines
+                    landmark_drawing_spec=None,
                 )
             
             
@@ -314,9 +337,9 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
                 mp_drawing.draw_landmarks(
                     frame,
                     results.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(0, 255, 0), thickness=2, circle_radius=1),  # Blue landmarks
-                    mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=1),  # Red lines
+                    custom_connections,
+                    connection_drawing_spec= mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=0),  # Red lines
+                    landmark_drawing_spec=None,
                 )
                 # Write the frame (annotated or original) to the output video
                 out.write(frame)
