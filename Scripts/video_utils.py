@@ -11,6 +11,7 @@ from mediapipe.tasks.python import vision
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions
 from mediapipe.framework.formats import image_format_pb2
 from mediapipe.python.solution_base import SolutionBase
+from mediapipe.framework.formats import landmark_pb2
 
 VisionRunningMode = mp.tasks.vision.RunningMode
 # when local do `export CPU_ONLY=True``
@@ -35,8 +36,8 @@ PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 options = PoseLandmarkerOptions(
     base_options=base_options,
     # test the two options below again, but dropped performance on small dataset
-    min_pose_detection_confidence=0.8, 
-    min_tracking_confidence=0.7,
+    min_pose_detection_confidence=0.7, 
+    min_tracking_confidence=0.6,
     running_mode=VisionRunningMode.VIDEO,
     output_segmentation_masks=False # also add detection and tracking confidence threshold
 )
@@ -65,7 +66,7 @@ def extract_frames_video(video_path):
     cap.release()
     return np.array(frames), timestamps, fps
 
-def add_logo(frame, logo, logo_scale=0.2):
+def add_logo(frame, logo, logo_scale=0.15):
     """
     Adds a logo to the bottom-right corner of a frame, resizing it based on a percentage of the frame width 
     while maintaining the original aspect ratio.
@@ -196,9 +197,27 @@ def extract_all_motion_segment(video_path, output_path, output_stick_path, draw_
         pose.close()
     print(f"Video saved to {output_path}{' with pose annotations' if draw_pose else ''}")
     
-    
+def numpy_to_landmark_list(keypoints):
+    landmarks = landmark_pb2.NormalizedLandmarkList()
+
+    for i, kp in enumerate(keypoints):
+        if (isinstance(kp, (list, tuple, np.ndarray)) and 
+            len(kp) == 3 and 
+            all(isinstance(x, (int, float, np.float32, np.float64)) for x in kp) and
+            0 <= kp[0] <= 1 and 0 <= kp[1] <= 1):
+            landmark = landmarks.landmark.add()
+            landmark.x = float(kp[0])
+            landmark.y = float(kp[1])
+            landmark.z = float(kp[2])
+        else:
+            landmark = landmarks.landmark.add()
+            landmark.x = 0
+            landmark.y = 0
+            landmark.z = 0
+    return landmarks
+   
 # called by driver in pipeline 1  
-def extract_motion_segment(video_path, swing, output_path, output_stick_path, draw_pose=True, stickfigure = True):
+def extract_motion_segment(video_path, swing, output_path, output_stick_path, keypoints, draw_pose=True, stickfigure = True, selective = False):
     """Extract a segment of the video based on frame indices with optional pose detection lines."""
     # Ensure the output directory exists
     start_frame = swing.padded_start_frame # <<<<<<<
@@ -235,10 +254,6 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
     # Initialize MediaPipe Pose if pose drawing is enabled
     if draw_pose:
         mp_pose = mp.solutions.pose
-        pose = mp_pose.Pose(
-                model_complexity=1, 
-                min_detection_confidence=0.9, 
-                min_tracking_confidence=0.8)
         mp_drawing = mp.solutions.drawing_utils
         custom_connections = frozenset([
                                             (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
@@ -246,24 +261,6 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
                                             (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.LEFT_KNEE),
                                             (mp_pose.PoseLandmark.LEFT_KNEE, mp_pose.PoseLandmark.LEFT_ANKLE),
                                         ])
-        custom_connections1 = frozenset([
-    # Upper body (excluding head)
-    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.RIGHT_SHOULDER),
-    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_ELBOW),
-    (mp_pose.PoseLandmark.LEFT_ELBOW, mp_pose.PoseLandmark.LEFT_WRIST),
-    (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_ELBOW),
-    (mp_pose.PoseLandmark.RIGHT_ELBOW, mp_pose.PoseLandmark.RIGHT_WRIST),
-    (mp_pose.PoseLandmark.LEFT_SHOULDER, mp_pose.PoseLandmark.LEFT_HIP),
-    (mp_pose.PoseLandmark.RIGHT_SHOULDER, mp_pose.PoseLandmark.RIGHT_HIP),
-    (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.RIGHT_HIP),
-    # Lower body
-    (mp_pose.PoseLandmark.LEFT_HIP, mp_pose.PoseLandmark.LEFT_KNEE),
-    (mp_pose.PoseLandmark.LEFT_KNEE, mp_pose.PoseLandmark.LEFT_ANKLE),
-    (mp_pose.PoseLandmark.RIGHT_HIP, mp_pose.PoseLandmark.RIGHT_KNEE),
-    (mp_pose.PoseLandmark.RIGHT_KNEE, mp_pose.PoseLandmark.RIGHT_ANKLE),
-    (mp_pose.PoseLandmark.LEFT_ANKLE, mp_pose.PoseLandmark.LEFT_FOOT_INDEX),
-    (mp_pose.PoseLandmark.RIGHT_ANKLE, mp_pose.PoseLandmark.RIGHT_FOOT_INDEX),
-])
     # Load the logo image
     logo = cv2.imread("logo/logo.png", cv2.IMREAD_UNCHANGED)
     
@@ -274,31 +271,37 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
         if not ret:
             print(f"Frame {frame_idx} could not be read, ending extraction.")
             break
-        
-        # Convert the frame to RGB for MediaPipe processing
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(rgb_frame)    
-            
-        if stickfigure:
-            
-            mp_drawing.draw_landmarks(
+
+        # Convert keypoints to landmarks
+        results = numpy_to_landmark_list(keypoints[frame_idx])
+        #breakpoint()
+
+        if not results or len(results.landmark) == 0:
+            print(f"Skipping frame {frame_idx} due to missing or invalid landmarks.")
+        else:
+            if stickfigure:
+                # Generate valid connections that skip landmarks with all (0, 0, 0) coordinates
+                valid_connections = [
+                    (a, b) for a, b in mp.solutions.pose.POSE_CONNECTIONS
+                    if not (
+                        (results.landmark[a].x == 0.0 and results.landmark[a].y == 0.0 and results.landmark[a].z == 0.0) or
+                        (results.landmark[b].x == 0.0 and results.landmark[b].y == 0.0 and results.landmark[b].z == 0.0)
+                    )
+                ]
+
+                # Draw only valid landmarks and connections
+                mp_drawing.draw_landmarks(
                     blank_frame,
-                    results.pose_landmarks,
-                    mp_pose.POSE_CONNECTIONS,
-                    connection_drawing_spec= mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=0),  # Red lines
+                    results,
+                    valid_connections,
+                    connection_drawing_spec=mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=0),
                     landmark_drawing_spec=None,
                 )
-            
-            
+
             # Define multiple lines of text
             lines = [
                 f"{swing.type}",
                 f'{swing.stance} stance',
-                #f'lateral {swing.x_movement:.1f}',
-                #f'depth {swing.z_movement:.1f}',
-                #f'swing length {swing.get_swing_len():.1f} seconds'
-                #f"{'right' if swing.x_movement < 0 else 'left'} ({abs(swing.x_movement):.1f})",
-                #f"{'backward' if swing.x_movement < 0 else 'forward'} ({abs(swing.z_movement):.1f})"
             ]
 
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -333,11 +336,18 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
             
         if draw_pose:
             # Draw pose landmarks on the frame
-            if results.pose_landmarks:
+            if results:
+                valid_connections = [
+                    (a, b) for a, b in mp.solutions.pose.POSE_CONNECTIONS
+                    if not (
+                        (results.landmark[a].x == 0.0 and results.landmark[a].y == 0.0 and results.landmark[a].z == 0.0) or
+                        (results.landmark[b].x == 0.0 and results.landmark[b].y == 0.0 and results.landmark[b].z == 0.0)
+                    )
+                ]
                 mp_drawing.draw_landmarks(
                     frame,
-                    results.pose_landmarks,
-                    custom_connections,
+                    results,
+                    custom_connections if selective else valid_connections,
                     connection_drawing_spec= mp_drawing.DrawingSpec(color=(255, 255, 255), thickness=2, circle_radius=0),  # Red lines
                     landmark_drawing_spec=None,
                 )
@@ -349,8 +359,6 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, dr
     cap.release()
     out.release()
     out2.release
-    if draw_pose:
-        pose.close()
     print(f"Segment saved to {output_path}{' with pose annotations' if draw_pose else ''}")
 
 
@@ -455,7 +463,7 @@ def extract_keypointsv6_asimg(video_path, right_handed):
         # Convert the BGR image to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_world_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
         # copied from extract_keypoints_from_video
         if result:
             landmarks = result[0]
@@ -465,7 +473,7 @@ def extract_keypointsv6_asimg(video_path, right_handed):
         else:
             keypoints.append([(None, None, None)] * 33)  # Fill with None for missing landmarks
     cap.release()
-    return np.array(keypoints), fps
+    return keypoints, fps
 
 
 
@@ -498,7 +506,7 @@ def convert_video_to_mp4v(input_path):
         # Ensure FFmpeg has finished writing before replacing the file
         if wait_for_file_ready(temp_output_path) and wait_until_opencv_can_open(temp_output_path):
             os.remove(input_path)  
-            os.rename(temp_output_path, input_path)  
+            os.rename(temp_output_path, video_name+'.mp4')  
             print(f"Replaced original file with converted version: {input_path}")
             return True
         else:

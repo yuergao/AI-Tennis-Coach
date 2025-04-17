@@ -3,6 +3,79 @@ from swing import Swing
 import json
 import os
 
+def save_keypoints_to_json(keypoints, json_path):
+    """
+    Save keypoints to a JSON file.
+
+    Parameters:
+    - keypoints (list): List of keypoints with (x, y, z) coordinates or None for missing landmarks.
+    - json_path (str): Path to save the JSON file.
+    """
+    with open(json_path, 'w') as f:
+        json.dump(keypoints, f)
+    print(f"Keypoints saved to {json_path}")
+    
+
+def save_detected_keypoints_to_json(keypoints, json_path):
+    """
+    Save only detected keypoints (non-None) to JSON file in readable format.
+    Skips missing landmarks and frames with all missing data.
+    """
+    landmark_names = [
+        "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer",
+        "left_ear", "right_ear", "mouth_left", "mouth_right", "left_shoulder", "right_shoulder", "left_elbow",
+        "right_elbow", "left_wrist", "right_wrist", "left_pinky", "right_pinky", "left_index", "right_index",
+        "left_thumb", "right_thumb", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle",
+        "left_heel", "right_heel", "left_foot_index", "right_foot_index"
+    ]
+
+    readable = []
+    for i, frame in enumerate(keypoints):
+        landmarks_dict = {}
+        for idx, point in enumerate(frame):
+            if point is None or len(point) != 3 or None in point:
+                continue  # skip undetected landmarks
+            name = landmark_names[idx]
+            x, y, z = point
+            landmarks_dict[name] = {"x": x, "y": y, "z": z}
+        
+        # Only save frames that have at least one detected landmark
+        if landmarks_dict:
+            readable.append({
+                "frame": i,
+                "landmarks": landmarks_dict
+            })
+
+    with open(json_path, 'w') as f:
+        json.dump(readable, f, indent=2)
+
+    print(f"Detected keypoints saved to {json_path}")
+    
+def load_keypoints_from_json(json_path):
+    """
+    Load keypoints from a JSON file and convert them to a NumPy array.
+
+    Parameters:
+    - json_path (str): Path to the JSON file.
+
+    Returns:
+    - np.ndarray: NumPy array of keypoints with shape (frames, landmarks, 3).
+    """
+    try:
+        with open(json_path, 'r') as f:
+            keypoints_from_json = json.load(f)
+        
+        # Convert to NumPy array, replacing None with np.nan for missing landmarks
+        keypoints_np = np.array([[tuple(lm if lm != [None, None, None] else (np.nan, np.nan, np.nan)) 
+                                   for lm in frame] 
+                                   for frame in keypoints_from_json], dtype=np.float32)
+
+        print(f"Successfully loaded {keypoints_np.shape[0]} frames of keypoints from {json_path}")
+        return keypoints_np
+    except Exception as e:
+        print(f"Error loading JSON: {e}")
+        return None
+    
 def save_swings_to_json(swings, filename):
     """Save a list of Swing objects to a JSON file."""
     with open(filename, "w") as f:
