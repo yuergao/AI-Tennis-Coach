@@ -29,7 +29,7 @@ if gpu_available_torch:
                                   delegate=python.BaseOptions.Delegate.GPU
     )
 else:
-    base_options = python.BaseOptions(model_asset_path='./models/pose_landmarker_full.task')
+    base_options = python.BaseOptions(model_asset_path='./models/pose_landmarker_heavy.task')
 
 PoseLandmarkerOptions = mp.tasks.vision.PoseLandmarkerOptions
 
@@ -302,6 +302,7 @@ def extract_motion_segment(video_path, swing, output_path, output_stick_path, ke
             lines = [
                 f"{swing.type}",
                 f'{swing.stance} stance',
+                f'{swing.avg_wrist_velocity:.2f} m/s wrist',
             ]
 
             font = cv2.FONT_HERSHEY_SIMPLEX
@@ -463,7 +464,7 @@ def extract_keypointsv6_asimg(video_path, right_handed):
         # Convert the BGR image to RGB
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         img=mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_world_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in world coordinates
+        result = detector.detect_for_video(img, int(cap.get(cv2.CAP_PROP_POS_MSEC))).pose_landmarks #.pose_world_landmark; needs further testing s # pose_landmarks are not in  coordinates
         # copied from extract_keypoints_from_video
         if result:
             landmarks = result[0]

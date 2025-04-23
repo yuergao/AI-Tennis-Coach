@@ -8,25 +8,29 @@ import av
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2' 
 
 # pro local paths: name, idx, double_backhand, right_handed
-sabalenka = ('sabalenka',2, True, True)
-swiatek = ('swiatek',2, True, True)
-rybakina = ('rybakina',2, True, True)
+sabalenka = ('sabalenka', 2, True, True, 1.82)
+swiatek = ('swiatek', 2, True, True, 1.79)
+rybakina = ('rybakina', 2, True, True, 1.82)
 
-djokovic = ('djokovic',2, True, True)
-fonseca = ('fonseca', 1, True, True)
-zverev = ('zverev', 2, True, True)
-alcaraz = ('alcaraz',2,True, True)
-federer = ('federer',2,False, True)
-draper = ('draper',1,True,False)
-holger = ('holger',1,True, True)
-nadal = ('nadal',1,True,False)
+djokovic = ('djokovic', 1, True, True, 1.88)
+fonseca = ('fonseca', 1, True, True, 1.83)  
+zverev = ('zverev', 1, True, True, 1.98)
+alcaraz = ('alcaraz', 2, True, True, 1.83)
+federer = ('federer', 2, False, True, 1.85)
+draper = ('draper', 1, True, False, 1.93)
+holger = ('holger', 1, True, True, 1.83)
+nadal = ('nadal', 1, True, False, 1.85)
+
+audrey = ('audrey', 22, True, True, 1.78)
+original = ('original', 2, True, True, 1.73)
+a = ('a', 1, True, True, 1.73)
 
 # User inputs
 pipeline1 = True # <<<<<<<<<<<<<<<<<<<<<<<
-pipeline2 = False # <<<<<<<<<<<<<<<<<<<<<<<
+pipeline2 = True # <<<<<<<<<<<<<<<<<<<<<<<
 
-test_paths = [('audrey',4,True, True)] # <<<<<<<<<<<<<<<<<<<<<<<
-player2_paths = [alcaraz] # <<<<<<<<<<< automate <<<<<<<<<<<<
+test_paths = [a] # name, idx, double_backhand, right_handed <<<<<<<<<<<<<<<<<<<<<<<
+player2_paths = [federer, fonseca] # <<<<<<<<<<< automate <<<<<<<<<<<<
 service = ["forehand"] # <<<<<<<<< service
 Amateur = False # <<<<< generate skeletal breakdown for full video
 video_extensions = ('.mp4', '.mov')
@@ -43,7 +47,7 @@ pro_female_paths = [('sabalenka',1),('swiatek',1),('gauff',1),('paolini',1),('zh
 amature_paths = [('arushi',2), ('qi',1), ('mark',1)]
 
 if pipeline1:
-    for player, player_vid_idx, double_hand_backhand,right_handed in test_paths:
+    for player, player_vid_idx, double_hand_backhand,right_handed,height in test_paths:
         folder_path = f"{player}/{player}{player_vid_idx}"
         for video, video_name in ((f, os.path.splitext(f)[0]) for f in os.listdir(folder_path) if f.lower().endswith(video_extensions)):
             video_path = os.path.join(folder_path, video)
@@ -61,7 +65,7 @@ if pipeline1:
                 keypoints, fps = extract_keypointsv6_asimg(video_path,right_handed)
                 print(f"Finished keypoint extraction for {video}")
                 save_detected_keypoints_to_json(keypoints,json_path)
-                forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand, right_handed)
+                forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand, right_handed, height)
                 if not right_handed:
                     for frame in keypoints:
                         for i in range(len(frame)):
@@ -95,12 +99,12 @@ if pipeline1:
                   
             else:
                 print(f"Keypoint file exists for {video}, using saved coordinates")
-                '''
+                
                 cap = cv2.VideoCapture(video_path)
                 fps = int(cap.get(cv2.CAP_PROP_FPS))
                 keypoints = load_keypoints_from_json(json_path)
-                forehand_segments = load_swings_from_json(forehand_swing_json)
-                backhand_segments = load_swings_from_json(backhand_swing_json)
+                forehand_segments, backhand_segments = detect_swings(keypoints, fps, double_hand_backhand, right_handed, height)
+                print(f"Detected {len(forehand_segments)} forehands and {len(backhand_segments)} backhands.")
                 # Process each swing and extract video segments
                 if 'forehand' in service and len(forehand_segments) > 0:
                     for idx, forehand in enumerate(forehand_segments):
@@ -121,7 +125,7 @@ if pipeline1:
                         extract_motion_segment(video_path, backhand, output_video, output_stick_video, keypoints)
                             
                     save_swings_to_json(backhand_segments, backhand_swing_json)
-                '''    
+                  
         
         if Amateur:
             output_video = os.path.join(folder_path,f"{video_name}_all.mp4")
@@ -136,8 +140,8 @@ if pipeline1:
 N = 2 # <<<<<<< number of similar videos
 
 if pipeline2:
-    for player1, player1_vid_idx, player1_double_hand_backhand, right_handed in test_paths: 
-        for player2, player2_vid_idx, player2_double_hand_backhand, right_handed in player2_paths: 
+    for player1, player1_vid_idx, player1_double_hand_backhand, right_handed, height in test_paths: 
+        for player2, player2_vid_idx, player2_double_hand_backhand, right_handed, height2 in player2_paths: 
             player1_vid = f"{player1}{player1_vid_idx}"
             player2_vid = f"{player2}{player2_vid_idx}"
             player_compare_detail = f"{player1}{player1_vid_idx}_{player2}{player2_vid_idx}"

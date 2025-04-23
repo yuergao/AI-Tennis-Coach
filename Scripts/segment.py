@@ -39,10 +39,10 @@ def find_best_frame(orientations, criteria, start_frame):
 
 # called by driver
 # function to detect start and end indices of tennis swings based on wrist position.
-def detect_swings(keypoints, fps, double_hand_backhand, right_handed):
+def detect_swings(keypoints, fps, double_hand_backhand, right_handed, height):
     orientations = calculate_body_orientation(keypoints)   
-    forehand_swings = find_matching_swings_forehand(orientations,fps, right_handed)
-    backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings, double_hand_backhand, right_handed)
+    forehand_swings = find_matching_swings_forehand(orientations,fps, right_handed, height)
+    backhand_swings = find_matching_swings_backhand(orientations,fps, forehand_swings, double_hand_backhand, right_handed, height)
     # Look for key aspects of tennis swing based on wrist position
     return [forehand_swings, backhand_swings]
 
@@ -142,7 +142,7 @@ def forehand_end_criteria(orientation, i):
     return total_score
 
 
-def find_matching_swings_forehand(orientations, fps, right_handed, threshold=float("inf"), velocity_threshold=2):
+def find_matching_swings_forehand(orientations, fps, right_handed, height, threshold=float("inf"), velocity_threshold=2):
     """
     Find all frames that meet the criteria within a specified range, ensuring no
     frames are selected within a cooldown period after a match. Includes wrist velocity as a criterion.
@@ -178,11 +178,17 @@ def find_matching_swings_forehand(orientations, fps, right_handed, threshold=flo
             if forehand_start_criteria(orientation, i) < threshold and not backhand_start_criteria(orientation, i) < threshold:
                 # Define the window for wrist velocity and scores
                 window_start = i
-                window_end = min(i + int(fps), len(orientations) - 1)
+                window_end = min(i + int(2 * fps), len(orientations) - 1)
 
                 # Extract right wrist coordinates for the entire window
                 right_wrist_coords = [
                     orientations[k]['right_wrist'] for k in range(window_start, window_end) if orientations[k]
+                ]
+                shoulder_y_coords = [
+                    orientations[k]['rs_y'] for k in range(window_start, window_end) if orientations[k]
+                ]
+                hip_y_coords = [
+                    orientations[k]['rh_y'] for k in range(window_start, window_end) if orientations[k]
                 ]
                 
                 valid_distances = [
@@ -196,7 +202,10 @@ def find_matching_swings_forehand(orientations, fps, right_handed, threshold=flo
 
                 
                 # Calculate wrist velocities for the window
-                avg_wrist_velocity, moves_right = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
+                #breakpoint()
+                shoulder_hip_distances = [abs(rs_y - rh_y) for rs_y, rh_y in zip(shoulder_y_coords, hip_y_coords) if rs_y is not None and rh_y is not None]
+                shoulder_to_hip_fraction = np.mean(shoulder_hip_distances[:20])
+                avg_wrist_velocity, moves_right = calculate_peak_wrist_velocity_at_contact(right_wrist_coords, fps, shoulder_to_hip_fraction, height)
                 
                 # Check if any velocity in the window exceeds the threshold
                 velocity_exceeds_threshold = avg_wrist_velocity > velocity_threshold
@@ -246,7 +255,6 @@ def find_matching_swings_forehand(orientations, fps, right_handed, threshold=flo
                                         last_selected_frame = i  # Update the last selected frame
 
     return matching_swings
-
 
 
 '''
@@ -338,7 +346,7 @@ def backhand_end_criteria(orientation, i):
     return total_score
 
 
-def find_matching_swings_backhand(orientations, fps, forehand_swings, double_hand_backhand, right_handed, threshold=float("inf"), velocity_threshold=3):
+def find_matching_swings_backhand(orientations, fps, forehand_swings, double_hand_backhand, right_handed, height, threshold=float("inf"), velocity_threshold=2):
     """
     Find all backhand frames that meet the criteria, ensuring no frames are selected
     within a cooldown period after a match. Includes wrist velocity as a criterion.
@@ -385,8 +393,8 @@ def find_matching_swings_backhand(orientations, fps, forehand_swings, double_han
                     orientations[k]['left_wrist'] for k in range(window_start+ int(fps), min(window_end + int(fps),len(orientations) - 1)) if orientations[k]
                 ]
                 # Calculate wrist velocities for the window
-                avg_wrist_velocity_right, moves_right_rw = calculate_average_wrist_velocity(right_wrist_coords, fps, orientation['shoulder_hip_distance'])
-                avg_wrist_velocity_left, moves_right_lw = calculate_average_wrist_velocity(left_wrist_coords, fps, orientation['shoulder_hip_distance'])
+                avg_wrist_velocity_right, moves_right_rw = calculate_peak_wrist_velocity_at_contact(right_wrist_coords, fps, orientation['shoulder_hip_distance'], height)
+                avg_wrist_velocity_left, moves_right_lw = calculate_peak_wrist_velocity_at_contact(left_wrist_coords, fps, orientation['shoulder_hip_distance'], height)
 
                 # Check if average velocity exceeds the threshold
                 if double_hand_backhand:

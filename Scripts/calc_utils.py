@@ -53,29 +53,47 @@ def save_detected_keypoints_to_json(keypoints, json_path):
     
 def load_keypoints_from_json(json_path):
     """
-    Load keypoints from a JSON file and convert them to a NumPy array.
-
-    Parameters:
-    - json_path (str): Path to the JSON file.
+    Load readable-format keypoints from JSON and return them as a list of (x, y, z) tuples per frame.
+    Missing frames are filled with placeholder values to preserve correct frame timing.
 
     Returns:
-    - np.ndarray: NumPy array of keypoints with shape (frames, landmarks, 3).
+    - List of frames, each containing a list of 33 (x, y, z) tuples.
     """
+    landmark_names = [
+        "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer",
+        "left_ear", "right_ear", "mouth_left", "mouth_right", "left_shoulder", "right_shoulder", "left_elbow",
+        "right_elbow", "left_wrist", "right_wrist", "left_pinky", "right_pinky", "left_index", "right_index",
+        "left_thumb", "right_thumb", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle", "right_ankle",
+        "left_heel", "right_heel", "left_foot_index", "right_foot_index"
+    ]
+
+    name_to_index = {name: i for i, name in enumerate(landmark_names)}
+    keypoints_array = []
+
     try:
         with open(json_path, 'r') as f:
-            keypoints_from_json = json.load(f)
-        
-        # Convert to NumPy array, replacing None with np.nan for missing landmarks
-        keypoints_np = np.array([[tuple(lm if lm != [None, None, None] else (np.nan, np.nan, np.nan)) 
-                                   for lm in frame] 
-                                   for frame in keypoints_from_json], dtype=np.float32)
+            data = json.load(f)
 
-        print(f"Successfully loaded {keypoints_np.shape[0]} frames of keypoints from {json_path}")
-        return keypoints_np
+        # Create a mapping of frame index to landmark data
+        frame_map = {frame["frame"]: frame["landmarks"] for frame in data}
+        total_frames = max(frame_map.keys()) + 1
+
+        for i in range(total_frames):
+            landmarks = [(None, None, None)] * 33
+            if i in frame_map:
+                for name, coords in frame_map[i].items():
+                    idx = name_to_index[name]
+                    landmarks[idx] = (coords["x"], coords["y"], coords["z"])
+            keypoints_array.append(landmarks)
+
+        print(f"Successfully loaded {len(keypoints_array)} frames of keypoints from {json_path}")
+        return keypoints_array
+
     except Exception as e:
         print(f"Error loading JSON: {e}")
         return None
     
+
 def save_swings_to_json(swings, filename):
     """Save a list of Swing objects to a JSON file."""
     with open(filename, "w") as f:
@@ -260,6 +278,46 @@ def calculate_body_orientation(keypoints):
         else:
             orientations.append(None)
     return orientations
+
+def calculate_peak_wrist_velocity_at_contact(right_wrist_coords, fps, shoulder_to_hip_fraction, player_height_m):
+    """
+    Compute the peak wrist velocity over any 0.5-second window, output in meters per second (m/s).
+    Uses real player height and observed shoulder-hip segment to scale unitless coords into meters.
+    """
+    if shoulder_to_hip_fraction <= 0 or player_height_m <= 0:
+        raise ValueError("Both shoulder-to-hip fraction and player height must be positive.")
+
+    # Based on anthropometric estimates: shoulder-to-hip is ~27% of body height
+    expected_shoulder_hip_proportion = 0.27
+    real_shoulder_to_hip_m = expected_shoulder_hip_proportion * player_height_m
+
+    # This is the scale multiplier that maps unitless coordinates to meters
+    scale = real_shoulder_to_hip_m / shoulder_to_hip_fraction
+
+    window_size = int(fps * 0.19)
+    if len(right_wrist_coords) < window_size:
+        return 0.0, None
+
+    peak_velocity_mps = 0.0
+    peak_start_index = None
+    frame_interval = window_size / fps  # duration in seconds
+
+    for i in range(len(right_wrist_coords) - window_size):
+        start = right_wrist_coords[i]
+        end = right_wrist_coords[i + window_size]
+        if start is None or end is None:
+            continue
+
+        displacement_unitless = np.linalg.norm(np.array(end) - np.array(start))
+        displacement_meters = displacement_unitless * scale
+        velocity_mps = displacement_meters / frame_interval
+
+        if velocity_mps > peak_velocity_mps:
+            peak_velocity_mps = velocity_mps
+            peak_start_index = i
+
+    return peak_velocity_mps, peak_start_index
+
 
 
 def calculate_average_wrist_velocity(right_wrist_coords, fps, shoulder_to_hip_length):
